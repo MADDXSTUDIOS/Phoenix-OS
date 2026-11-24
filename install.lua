@@ -1,76 +1,64 @@
--- Phoenix OS installer.
---   wget run https://raw.githubusercontent.com/MADDXSTUDIOS/Phoenix-OS/main/install.lua
--- Downloads every file listed in manifest.txt, then restarts into Phoenix OS.
--- Accounts, settings and user files (/etc, /usr) are left alone, so running it
--- again updates an existing install.
-local BASE = "https://raw.githubusercontent.com/MADDXSTUDIOS/Phoenix-OS/main/"
-local base = ... or BASE
-if base:sub(-1) ~= "/" then base = base .. "/" end
+-- Phoenix OS installer (public placeholder).
+-- Phoenix OS is still being built, so this only shows a notice and installs nothing.
+-- Development builds: wget run https://raw.githubusercontent.com/MADDXSTUDIOS/Phoenix-OS/main/install.lua dev
+local arg = ...
 
-local function fetch(path)
-    local res, err = http.get(base .. path, nil, true)
-    if not res then return nil, err end
-    local body = res.readAll()
-    res.close()
-    return body
-end
-
-term.clear()
-term.setCursorPos(1, 1)
-if term.isColour() then term.setTextColour(colours.orange) end
-print("Phoenix OS installer")
-term.setTextColour(colours.white)
-
-if not term.isColour() then
-    printError("Phoenix OS needs an Advanced Computer.")
-    return
-end
-if not http then
-    printError("The http API is switched off on this server.")
-    return
-end
-
-local manifest, err = fetch("manifest.txt")
-if not manifest then
-    printError("Couldn't download the file list: " .. tostring(err))
-    return
-end
-local files = {}
-for line in manifest:gmatch("[^\r\n]+") do
-    if line:match("%S") and not line:match("^#") then files[#files + 1] = line end
-end
-
-print("Downloading " .. #files .. " files...")
-local _, y = term.getCursorPos()
-local got = {}
-for i, path in ipairs(files) do
-    term.setCursorPos(1, y)
-    term.clearLine()
-    write(("[%d/%d] %s"):format(i, #files, path))
-    local body, e = fetch(path)
-    if not body then
-        print()
-        printError("Failed on " .. path .. ": " .. tostring(e))
-        print("Nothing was changed.")
+if arg == "dev" then
+    local res, err = http.get("https://raw.githubusercontent.com/MADDXSTUDIOS/Phoenix-OS/dev/install.lua")
+    if not res then
+        printError("Couldn't download the development installer: " .. tostring(err))
         return
     end
-    got[path] = body
+    local code = res.readAll()
+    res.close()
+    local fn, e = load(code, "@install.lua", "t", _ENV)
+    if not fn then printError(e) return end
+    return fn("dev")
 end
 
--- Only write once everything has downloaded, so a failed download can't leave half an OS.
-for path, body in pairs(got) do
-    local f = fs.open(path, "wb")
-    f.write(body)
-    f.close()
+local w, h = term.getSize()
+local colour = term.isColour()
+
+local function centre(y, text, fg)
+    if colour and fg then term.setTextColour(fg) end
+    term.setCursorPos(math.floor((w - #text) / 2) + 1, y)
+    term.write(text)
 end
--- The updater compares against this copy to know what's installed.
-local f = fs.open("system/manifest.txt", "w")
-f.write(manifest)
-f.close()
-print()
-if term.isColour() then term.setTextColour(colours.lime) end
-print("Phoenix OS installed.")
-term.setTextColour(colours.white)
-print("Restarting in 3 seconds...")
-sleep(3)
-os.reboot()
+
+if colour then
+    -- Phoenix colours for the splash; put back to normal afterwards.
+    term.setPaletteColour(colours.cyan, 0x1F8A9E)
+    term.setPaletteColour(colours.orange, 0xEE7A1C)
+    term.setPaletteColour(colours.lightBlue, 0xBFE3EA)
+    term.setBackgroundColour(colours.cyan)
+    term.setTextColour(colours.white)
+end
+term.clear()
+
+local top = math.max(1, math.floor(h / 2) - 4)
+if colour then
+    term.setBackgroundColour(colours.orange)
+    for y = top, top + 2 do
+        term.setCursorPos(1, y)
+        term.write((" "):rep(w))
+    end
+end
+centre(top + 1, "P H O E N I X   O S", colours.white)
+if colour then term.setBackgroundColour(colours.cyan) end
+centre(top + 4, "Under development", colours.white)
+centre(top + 6, "Phoenix OS isn't ready to install yet.", colours.lightBlue)
+centre(top + 7, "Check back soon!", colours.lightBlue)
+centre(h - 1, "github.com/MADDXSTUDIOS/Phoenix-OS", colours.lightBlue)
+centre(h, "Press any key", colours.white)
+
+os.pullEvent("key")
+if colour then
+    for _, c in ipairs({ colours.cyan, colours.orange, colours.lightBlue }) do
+        term.setPaletteColour(c, term.nativePaletteColour(c))
+    end
+    term.setBackgroundColour(colours.black)
+    term.setTextColour(colours.white)
+end
+term.clear()
+term.setCursorPos(1, 1)
+print("Nothing was installed.")
