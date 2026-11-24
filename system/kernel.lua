@@ -709,12 +709,38 @@ function K.startSession(user)
     sys.wm.overlay = nil
     sys.desktop.start()
     sys.wm.invalidate()
+    if user.admin and K.getSetting("update.auto", true) then K.after(3, K.checkForUpdate) end
+end
+
+-- Look for an update in the background and, if there is one, offer it in a notification.
+-- Fails silently: no internet, GitHub down or http switched off just means no notification.
+function K.checkForUpdate()
+    local s = K.session
+    if not s or not s.admin then return end
+    K.spawn({
+        name = "Update check", system = true,
+        fn = function()
+            local ok, update = pcall(dofile, "/lib/update.lua")
+            if not ok then return end
+            local ok2, info = pcall(update.check)
+            if not ok2 or not info or not info.available or K.session ~= s then return end
+            sys.wm.notify({
+                title = "Update available",
+                text = "Phoenix OS " .. update.describe(info) .. " is ready to install.",
+                buttons = {
+                    { "Update", function() K.launchApp("settings", { "update", n = 1 }) end },
+                    { "Later" },
+                },
+            })
+        end,
+    })
 end
 
 function K.endSession()
     for _, p in ipairs(K.list()) do K.kill(p) end
     if K.session then K.log("INFO", K.session.name .. " signed out") end
     sys.desktop.stop()
+    sys.wm.toast = nil
     K.session = nil
 end
 

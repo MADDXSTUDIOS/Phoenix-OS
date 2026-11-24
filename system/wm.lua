@@ -212,6 +212,11 @@ function WM.flush()
             if popup and y >= popup.y and y < popup.y + popup.h then
                 t, f, b = splice(t, f, b, popup.x, popup.row(y - popup.y + 1))
             end
+            local toast = WM.toast
+            if toast then
+                local tx, ty = W - toast.w, H - toast.h
+                if y >= ty then t, f, b = splice(t, f, b, tx, toast.row(y - ty + 1)) end
+            end
         end
         local p = prev[y]
         if not p or p[1] ~= t or p[2] ~= f or p[3] ~= b then
@@ -310,6 +315,15 @@ local function mouse(name, a, x, y)
 
     -- mouse_click
     drag, mouseTarget = nil, nil
+    local toast = WM.toast
+    if toast then
+        local tx, ty = W - toast.w, H - toast.h
+        if x >= tx and x < tx + toast.w and y >= ty and y < H then
+            if WM.popup then WM.popup.close() end
+            toast.click(x - tx + 1, y - ty + 1)
+            return
+        end
+    end
     local popup = WM.popup
     if popup then
         if x >= popup.x and x < popup.x + popup.w and y >= popup.y and y < popup.y + popup.h then
@@ -400,6 +414,67 @@ function WM.alert(title, text)
             ui.run(form)
         end,
     })
+end
+
+-- A notification box in the bottom-right corner, just above the taskbar.
+-- It stays until a button (or the X) is clicked; it doesn't take the keyboard.
+--   WM.notify({ title = "...", text = "...", buttons = { { "Update", fn }, { "Later" } } })
+-- Each button closes the box, then runs its function (if it has one).
+function WM.notify(n)
+    local ui = sys.ui
+    local hex = hexOf
+    local w = math.min(W - 2, math.max(30, #n.title + 6))
+    local lines = ui.wrap(n.text or "", w - 4)
+    local h = #lines + 4
+    local buttons, bx = {}, w
+    for i = #(n.buttons or {}), 1, -1 do
+        local b = n.buttons[i]
+        local label = " " .. b[1] .. " "
+        bx = bx - #label - 1
+        buttons[i] = { x = bx, label = label, fn = b[2], primary = i == 1 }
+    end
+    local toast = { w = w, h = h, title = n.title }
+    local function close()
+        if WM.toast == toast then WM.toast = nil end
+        WM.dirty = true
+    end
+    toast.close = close
+    function toast.row(i)
+        local white, black = hex[theme.menu], hex[theme.menuText]
+        if i == 1 then
+            local t = ui.fit(" " .. n.title, w - 3) .. " \215 "
+            return t, ("0"):rep(w), hex[theme.titleActive]:rep(w - 3) .. hex[theme.close]:rep(3)
+        end
+        local line = lines[i - 1]
+        if line then return ui.fit("  " .. line, w), black:rep(w), white:rep(w) end
+        if i == h - 1 and #buttons > 0 then
+            local t, f, b = (" "):rep(w), black:rep(w), white:rep(w)
+            for _, btn in ipairs(buttons) do
+                local fg = btn.primary and hex[colors.white] or black
+                local bg = btn.primary and hex[theme.titleActive] or hex[colors.lightGray]
+                local s, e = btn.x, btn.x + #btn.label - 1
+                t = t:sub(1, s - 1) .. btn.label .. t:sub(e + 1)
+                f = f:sub(1, s - 1) .. fg:rep(#btn.label) .. f:sub(e + 1)
+                b = b:sub(1, s - 1) .. bg:rep(#btn.label) .. b:sub(e + 1)
+            end
+            return t, f, b
+        end
+        return (" "):rep(w), black:rep(w), white:rep(w)
+    end
+    function toast.click(x, y)
+        if y == 1 and x >= w - 2 then close() return end
+        if y ~= h - 1 then return end
+        for _, btn in ipairs(buttons) do
+            if x >= btn.x and x < btn.x + #btn.label then
+                close()
+                if btn.fn then btn.fn() end
+                return
+            end
+        end
+    end
+    WM.toast = toast
+    WM.dirty = true
+    return toast
 end
 
 -- Blank the screen with one line of text (shutting down, restarting).
