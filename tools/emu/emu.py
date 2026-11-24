@@ -30,7 +30,7 @@ LOW_CHARS = {
 
 class Emu:
     def __init__(self, lua_dir, root, w=51, h=19, colour=True, computer_id=0, http_dir=None,
-                 http_prefix=None, capacity=1000000):
+                 http_prefix=None, capacity=1000000, http_delay=None):
         """lua_dir: CC:Tweaked's data/computercraft/lua folder (holds bios.lua and rom/)."""
         self.w, self.h = w, h
         self.lua = lua52.LuaRuntime(unpack_returned_tuples=True, encoding="latin-1")
@@ -68,6 +68,7 @@ class Emu:
         })
         cfg = {
             "w": w, "h": h, "colour": colour, "id": computer_id, "capacity": capacity,
+            "http_delay": http_delay,
             "root": os.path.abspath(root), "rom": os.path.join(os.path.abspath(lua_dir), "rom"),
             "bios": os.path.join(os.path.abspath(lua_dir), "bios.lua"),
         }

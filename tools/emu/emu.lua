@@ -395,7 +395,13 @@ return function(py, cfg)
             function handle.close() end
             function handle.getResponseCode() return 200, "OK" end
             function handle.getResponseHeaders() return {} end
-            E.queue[#E.queue + 1] = table.pack("http_success", url, handle)
+            local ev = table.pack("http_success", url, handle)
+            if cfg.http_delay then
+                -- Pretend the download takes a moment, like a real one.
+                E.timers[#E.timers + 1] = { id = -1, at = E.vclock + cfg.http_delay, ev = ev }
+            else
+                E.queue[#E.queue + 1] = ev
+            end
         end
         function h.request(url)
             if type(url) == "table" then url = url.url end
@@ -506,7 +512,7 @@ return function(py, cfg)
                 if best and E.timers[best].at <= target then
                     local t = table.remove(E.timers, best)
                     if t.at > E.vclock then E.vclock = t.at end
-                    ev = table.pack("timer", t.id)
+                    ev = t.ev or table.pack("timer", t.id)
                 else
                     E.vclock = target
                     break
