@@ -1,17 +1,19 @@
 # Phoenix OS
 
 A Windows-style desktop operating system for CC:Tweaked advanced computers
-(Minecraft 1.21.1). This is **Phoenix OS Standard** (the `dev` branch: `0.1.2-dev`), the first working core.
+(Minecraft 1.21.1). This is the `dev` branch: **Phoenix OS Standard 0.1.2-dev**.
 
 ## Install
 
-On an **Advanced Computer**, run:
+Phoenix OS isn't released yet: `main` only shows an "under development" screen.
+To install this development build on an **Advanced Computer**, run:
 
 ```
-wget run https://raw.githubusercontent.com/MADDXSTUDIOS/Phoenix-OS/main/install.lua
+wget run https://raw.githubusercontent.com/MADDXSTUDIOS/Phoenix-OS/main/install.lua dev
 ```
 
 It downloads the OS, restarts, and asks you to create the administrator account.
+The computer then keeps updating from `dev`.
 
 ## Updating
 
@@ -21,21 +23,20 @@ of the OS, and restarts. Accounts, settings and everything in `/usr` are left al
 
 Every change pushed to GitHub counts as an update, even without a new version number,
 because each release has a build code made from all of its files. To test work in
-progress, push it to another branch and point a computer at it with
-`update branch dev` in the Shell (or the Branch button in Settings); `update branch main`
-goes back. `update force` reinstalls even when it's already up to date.
+progress on another branch, point a computer at it with `update branch <name>` in the
+Shell (or the Branch button in Settings). `update force` reinstalls even when it's already
+up to date. Until the first release, `main` has nothing to update from, so stay on `dev`.
 
 ## Versions and branches
 
-- `main` holds releases only, e.g. `0.1.1`. Normal computers update from here.
+- `main` holds releases only. Until the first one it's a placeholder (README plus an installer
+  that shows "under development"); normal computers will update from here once it's released.
 - `dev` is work in progress and carries the next version with `-dev` on the end, e.g. `0.1.2-dev`.
-  Install a test computer straight from it with
-  `wget run https://raw.githubusercontent.com/MADDXSTUDIOS/Phoenix-OS/dev/install.lua dev`
-  and it keeps updating from dev.
+  Install a test computer from it with the `install.lua dev` command above.
 - Builds handed to other people to test get `-alpha.1`, `-alpha.2` (rough, things missing),
   then `-beta.1`... (feature-complete, bug fixing).
-- To release: drop the tag in `system/boot.lua`, rebuild the manifest, merge `dev` into `main`,
-  then bump dev to the next `-dev` version.
+- To release: drop the tag in `system/boot.lua`, rebuild the manifest, merge `dev` into `main`
+  (replacing the placeholder installer and README with dev's), then bump dev to the next `-dev` version.
 
 **Before committing changes to the OS, run `python3 tools/mkmanifest.py`** so the
 file list and build code are current, otherwise computers won't see the update.
