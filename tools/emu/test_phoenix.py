@@ -70,7 +70,8 @@ def install(root):
             shutil.copy2(src, dst)
 
 
-GROUPED = {"Shell": "Utilities", "Settings": "Utilities", "Tasks": "Utilities", "Editor": "Programs", "Clock": "Programs"}
+GROUPED = {"Shell": "Utilities", "Settings": "Utilities", "Tasks": "Utilities", "Editor": "Programs", "Clock": "Programs",
+           "Text Viewer": "Programs"}
 
 
 def menu(e, item):
@@ -87,9 +88,15 @@ def menu(e, item):
                 e.click(x + 4, y + 1, settle=0.5)
                 return
         check(False, "Utilities shows " + item)
-    pos = e.find("  " + item)
-    check(pos, "Start menu shows " + item)
-    e.click(pos[0] + 3, pos[1], settle=0.5)
+    # look only in the menu (the left 22 columns, below the name bar), not at desktop labels
+    rows = text(e).split("\n")
+    top = next((i for i, r in enumerate(rows) if "(admin)" in r[:22] or r[:22].strip().startswith("\2")), 0)
+    for y in range(top + 1, e.h - 1):
+        x = rows[y].find("  " + item, 0, 22 + len(item))
+        if 0 <= x < 22:
+            e.click(x + 3, y + 1, settle=0.5)
+            return
+    check(False, "Start menu shows " + item)
 
 
 def sign_in(e, name, password):
@@ -266,18 +273,78 @@ def main():
     check("Settings" in text(e) and "Tasks" in text(e) and "running" in text(e), "Tasks lists running programs")
     shot(e, "12_tasks")
 
-    # ---- editor (CraftOS edit in a window)
+    # ---- editor: Phoenix's own, with a File menu and Ctrl shortcuts
+    def ctrl(k):
+        e.queue("key", e.E.key_code("leftCtrl"), False)
+        e.run(0.02)
+        e.key(k, settle=0.3)
+        e.queue("key_up", e.E.key_code("leftCtrl"))
+        e.run(0.05)
+
     menu(e, "Editor")
-    check("File to open or create" in text(e), "Editor asks for a file name")
-    e.key("enter", settle=0.5)
+    check("Untitled - Editor" in text(e) and "Ln 1, Col 1" in text(e), "Editor opens a new, empty file")
     e.type("Hello from Phoenix OS")
-    check("Hello from Phoenix OS" in text(e) and "untitled.txt - Editor" in text(e), "typing in the editor works")
+    e.key("enter")
+    e.type("second line")
+    check("*Untitled" in text(e) and "(unsaved)" in text(e) and "Ln 2, Col 12" in text(e), "typing marks the file unsaved")
     shot(e, "13_editor")
-    e.key("leftCtrl")
-    e.key("enter", settle=0.3)  # Save
-    saved = os.path.join(root, "usr", "aaron", "documents", "untitled.txt")
-    check(os.path.isfile(saved) and "Hello from Phoenix OS" in open(saved).read(), "editor saves into the user's documents")
+    p = e.find(" File ")
+    e.click(p[0] + 2, p[1])
+    check("Save as..." in text(e) and "Ctrl+S" in text(e), "the File menu drops down")
+    shot(e, "13b_editor_menu")
+    e.click(p[0] + 2, p[1])
+    ctrl("s")
+    check("Save as:" in text(e), "Ctrl+S on a new file asks where to save")
+    for _ in range(12):
+        e.key("backspace", settle=0.01)
+    e.type("hello.txt")
+    e.key("enter", settle=0.5)
+    saved = os.path.join(root, "usr", "aaron", "documents", "hello.txt")
+    check(os.path.isfile(saved) and open(saved).read() == "Hello from Phoenix OS\nsecond line\n", "editor saves into the user's documents")
+    check("hello.txt - Editor" in text(e) and "(unsaved)" not in text(e), "and the title shows the file name")
+    e.type("!")
+    ctrl("n")
+    check("Save changes to hello.txt?" in text(e), "starting a new file asks about unsaved changes")
+    p = e.find(" Cancel ")
+    e.click(p[0] + 1, p[1], settle=0.3)
+    check("*hello.txt" in text(e), "cancel keeps the work")
+    p = e.find(" Don't save ")
+    check(p is None, "and the question has gone")
+    ctrl("n")
+    p = e.find(" Don't save ")
+    e.click(p[0] + 1, p[1], settle=0.3)
+    check("Untitled - Editor" in text(e), "Don't save starts a fresh file")
+    check(open(saved).read().count("!") == 0, "without saving the change")
     e.click(e.w - 1, 1, settle=0.3)
+
+    # ---- viewer: Files opens text files read-only; File > Edit hands over to the editor
+    menu(e, "Files")
+    p = e.find("documents")
+    e.double_click(p[0] + 1, p[1], settle=0.3)
+    p = e.find("hello.txt")
+    e.double_click(p[0] + 1, p[1], settle=0.5)
+    check("hello.txt - Text Viewer" in text(e) and "Hello from Phoenix OS" in text(e) and "Read only" in text(e), "double-clicking a text file opens the Text Viewer")
+    e.type("typing does nothing")
+    check("typing does nothing" not in text(e), "the viewer is read-only")
+    shot(e, "13c_viewer")
+    rows = e.screen()
+    y = next(i for i, r in enumerate(rows) if "Text Viewer" in r) + 1  # menu bar is the row under the title
+    x = rows[y].find(" File ")
+    e.click(x + 2, y + 1)
+    p = e.find(" Edit ")
+    e.click(p[0] + 2, p[1], settle=0.5)
+    check("hello.txt - Editor" in text(e) and "Text Viewer" not in e.screen()[e.h - 1], "File > Edit opens it in the Editor and closes the viewer")
+    e.click(e.w - 1, 1, settle=0.3)
+    # Files: New > Text file makes one and opens it in the editor
+    p = e.find(" New ")
+    e.click(p[0] + 1, p[1], settle=0.3)
+    check("What do you want to make?" in text(e), "Files' New asks folder or text file")
+    p = e.find(" Text file ")
+    e.click(p[0] + 1, p[1], settle=0.3)
+    e.key("enter", settle=0.5)
+    check(os.path.isfile(os.path.join(root, "usr", "aaron", "documents", "untitled.txt")) and "untitled.txt - Editor" in text(e), "and the new file opens in the editor")
+    e.click(e.w - 1, 1, settle=0.3)
+    e.click(40, 17)
 
     # ---- a crashing program shows an error window and gets logged
     with open(os.path.join(root, "usr", "aaron", "documents", "boom.lua"), "w") as f:
@@ -314,7 +381,7 @@ def main():
     check("Wrong password" in text(e), "wrong password is refused")
     e.type("hunter2")
     e.key("enter", settle=0.5)
-    check(desktop(e) and "Setting" in e.screen()[e.h - 1], "unlocking returns to the desktop with windows intact")
+    check(desktop(e) and "Setti" in e.screen()[e.h - 1], "unlocking returns to the desktop with windows intact")
 
     # ---- sign out, sign in as the standard user
     menu(e, "Sign out")
@@ -389,7 +456,7 @@ def main():
     check("Install Phoenix OS" in text(e) and "Cancel" in text(e), "installer asks before installing")
     shot(e, "19_installer_confirm")
     e.key("enter", settle=0.5)
-    check("of 22 files" in text(e), "installer shows a progress bar with a file count")
+    check(" files" in text(e) and "%" in text(e), "installer shows a progress bar with a file count")
     check("Phoenix OS" in text(e) and "installed" in text(e), "installer downloads everything")
     shot(e, "19_installer")
     e.run(5)

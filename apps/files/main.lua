@@ -71,13 +71,35 @@ end
 local function open()
     local e = selected()
     if not e then return end
-    if e.dir then go(pathOf(e)) else phoenix.launch("editor", pathOf(e)) end
+    if e.dir then go(pathOf(e)) else phoenix.launch("viewer", pathOf(e)) end
 end
 
-local function newFolder()
-    local name = ui.prompt(t, "New folder", "Folder name:")
-    if name and name:match("%S") then
-        if try(fs.makeDir, fs.combine(dir, name)) then load() end
+local function edit()
+    local e = selected()
+    if not e or e.dir then return end
+    phoenix.launch("editor", pathOf(e))
+end
+
+local function newItem()
+    local kind = ui.message(t, "New", "What do you want to make?", { "Text file", "Folder", "Cancel" })
+    if kind == 2 then
+        local name = ui.prompt(t, "New folder", "Folder name:")
+        if name and name:match("%S") then
+            if try(fs.makeDir, fs.combine(dir, name)) then load() end
+        end
+    elseif kind == 1 then
+        local name = ui.prompt(t, "New text file", "File name:", "untitled.txt")
+        if not name or not name:match("%S") then return end
+        local p = fs.combine(dir, name)
+        if fs.exists(p) then ui.message(t, "Files", name .. " already exists.") return end
+        local ok = try(function()
+            local f = assert(fs.open(p, "w"))
+            f.close()
+        end)
+        if ok then
+            load()
+            phoenix.launch("editor", "/" .. p)
+        end
     end
 end
 
@@ -122,8 +144,9 @@ local function layout()
         form:add(ui.button({ x = x, y = 1, text = text, bg = colors.white, focusable = false, onClick = fn }))
         x = x + #text + 3
     end
-    button("\24 Up", up)
-    button("New", newFolder)
+    button("\24", up)
+    button("New", newItem)
+    button("Edit", edit)
     button("Rename", rename)
     button("Delete", delete)
     button("Run", run)

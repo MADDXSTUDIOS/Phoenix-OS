@@ -275,6 +275,240 @@ function Check:key(k)
     if k == keys.space or k == keys.enter then self:click() return true end
 end
 
+-- Menu bar: { x, y, w, menus = { { "File", { { "Open", fn }, { "-" }, { "Close", fn, key = "Ctrl+W" } } } } }
+-- Click a heading (or press Alt) to drop its menu down; click an item to run it.
+-- Add it to the form last, so its dropdown draws on top and gets clicks first.
+local MenuBar = class(Widget)
+function ui.menubar(o)
+    o.h, o.open, o.sel = 1, nil, 0
+    o.dropW = {}
+    for i, m in ipairs(o.menus) do
+        local wd = 10
+        for _, it in ipairs(m[2]) do wd = math.max(wd, #it[1] + 4 + (it.key and #it.key + 1 or 0)) end
+        o.dropW[i] = wd
+    end
+    return setmetatable(o, MenuBar)
+end
+function MenuBar:headX(i)
+    local x = self.x + 1
+    for j = 1, i - 1 do x = x + #self.menus[j][1] + 2 end
+    return x
+end
+function MenuBar:hit(x, y)
+    if self.open then return true end -- while a menu is down, every click comes here
+    return y == self.y and x >= self.x and x < self.x + self.w
+end
+function MenuBar:draw(t, form)
+    t.setCursorPos(self.x, self.y)
+    t.setBackgroundColour(colors.lightGray)
+    t.write((" "):rep(self.w))
+    for i, m in ipairs(self.menus) do
+        t.setCursorPos(self:headX(i), self.y)
+        local open = self.open == i
+        t.setBackgroundColour(open and colors.blue or colors.lightGray)
+        t.setTextColour(open and colors.white or colors.black)
+        t.write(" " .. m[1] .. " ")
+    end
+    if self.open then
+        local items, dw = self.menus[self.open][2], self.dropW[self.open]
+        local dx = self:headX(self.open)
+        for j, it in ipairs(items) do
+            t.setCursorPos(dx, self.y + j)
+            if it[1] == "-" then
+                t.setBackgroundColour(colors.white)
+                t.setTextColour(colors.lightGray)
+                t.write(("\140"):rep(dw))
+            else
+                local sel = j == self.sel
+                t.setBackgroundColour(sel and colors.blue or colors.white)
+                t.setTextColour(it.disabled and colors.lightGray or (sel and colors.white or colors.black))
+                local text = " " .. it[1]
+                local keyText = it.key and (it.key .. " ") or ""
+                t.write(text .. (" "):rep(dw - #text - #keyText) .. keyText)
+            end
+        end
+    end
+end
+function MenuBar:close() self.open, self.sel = nil, 0 end
+function MenuBar:run(j)
+    local it = self.open and self.menus[self.open][2][j]
+    if not it or it[1] == "-" or it.disabled then return end
+    self:close()
+    if it[2] then it[2]() end
+end
+function MenuBar:click(_, x, y)
+    if self.open then
+        local dx, dw = self:headX(self.open), self.dropW[self.open]
+        local items = self.menus[self.open][2]
+        if x >= dx and x < dx + dw and y > self.y and y <= self.y + #items then
+            return self:run(y - self.y)
+        end
+    end
+    if y == self.y then
+        for i, m in ipairs(self.menus) do
+            local hx = self:headX(i)
+            if x >= hx and x < hx + #m[1] + 2 then
+                if self.open == i then self:close() else self.open, self.sel = i, 0 end
+                return
+            end
+        end
+    end
+    self:close()
+end
+function MenuBar:key(k)
+    if not self.open then return false end
+    local items = self.menus[self.open][2]
+    if k == keys.down or k == keys.up then
+        local step = k == keys.down and 1 or -1
+        for _ = 1, #items do
+            self.sel = (self.sel - 1 + step) % #items + 1
+            if items[self.sel][1] ~= "-" then break end
+        end
+    elseif k == keys.left or k == keys.right then
+        self.open = (self.open - 1 + (k == keys.right and 1 or -1)) % #self.menus + 1
+        self.sel = 0
+    elseif k == keys.enter then
+        self:run(self.sel)
+    else
+        self:close()
+    end
+    return true
+end
+
+-- Text area: { x, y, w, h, lines = { "..." }, readonly, onChange }
+-- A scrolling block of editable (or read-only) text with a cursor.
+local TextArea = class(Widget)
+function ui.textarea(o)
+    o.lines = o.lines or { "" }
+    o.cx, o.cy, o.sx, o.sy, o.focusable = 1, 1, 0, 0, true
+    return setmetatable(o, TextArea)
+end
+function TextArea:setText(text)
+    local lines = {}
+    text = (text or ""):gsub("\r\n", "\n"):gsub("\t", "    ")
+    for line in (text .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = line end
+    if #lines > 1 and lines[#lines] == "" then lines[#lines] = nil end
+    self.lines, self.cx, self.cy, self.sx, self.sy = lines, 1, 1, 0, 0
+end
+function TextArea:getText() return table.concat(self.lines, "\n") .. "\n" end
+function TextArea:fix()
+    local n = #self.lines
+    self.cy = clamp(self.cy, 1, n)
+    self.cx = clamp(self.cx, 1, #self.lines[self.cy] + 1)
+    if self.readonly then
+        self.sy = clamp(self.sy, 0, math.max(0, n - self.h))
+        return
+    end
+    if self.cy - self.sy > self.h then self.sy = self.cy - self.h end
+    if self.cy <= self.sy then self.sy = self.cy - 1 end
+    if self.cx - self.sx > self.w then self.sx = self.cx - self.w end
+    if self.cx <= self.sx then self.sx = math.max(0, self.cx - 1) end
+end
+function TextArea:draw(t, form)
+    self:fix()
+    t.setBackgroundColour(self.bg or colors.white)
+    t.setTextColour(self.fg or colors.black)
+    for i = 1, self.h do
+        local line = self.lines[self.sy + i]
+        t.setCursorPos(self.x, self.y + i - 1)
+        t.write(fit(line and line:sub(self.sx + 1, self.sx + self.w) or "", self.w))
+    end
+end
+function TextArea:cursor()
+    if self.readonly then return nil end
+    return self.x + self.cx - 1 - self.sx, self.y + self.cy - 1 - self.sy
+end
+function TextArea:changed()
+    if self.onChange then self.onChange(self) end
+end
+function TextArea:insert(text)
+    if self.readonly then return end
+    local line = self.lines[self.cy]
+    local before, after = line:sub(1, self.cx - 1), line:sub(self.cx)
+    local parts = {}
+    for p in (text .. "\n"):gmatch("(.-)\n") do parts[#parts + 1] = p end
+    if #parts == 1 then
+        self.lines[self.cy] = before .. parts[1] .. after
+        self.cx = self.cx + #parts[1]
+    else
+        self.lines[self.cy] = before .. parts[1]
+        for i = 2, #parts do table.insert(self.lines, self.cy + i - 1, parts[i]) end
+        self.cy = self.cy + #parts - 1
+        self.cx = #self.lines[self.cy] + 1
+        self.lines[self.cy] = self.lines[self.cy] .. after
+    end
+    self:changed()
+end
+function TextArea:char(c)
+    if ui.ctrl then return end -- Ctrl+letter is a shortcut, not typing
+    self:insert((c:gsub("\t", "    ")))
+end
+function TextArea:key(k)
+    local L = self.lines
+    if self.readonly then
+        if k == keys.up then self.sy = self.sy - 1
+        elseif k == keys.down then self.sy = self.sy + 1
+        elseif k == keys.pageUp then self.sy = self.sy - self.h
+        elseif k == keys.pageDown then self.sy = self.sy + self.h
+        elseif k == keys.home then self.sy = 0
+        elseif k == keys["end"] then self.sy = #L
+        elseif k == keys.left then self.sx = math.max(0, self.sx - 4)
+        elseif k == keys.right then self.sx = self.sx + 4
+        else return false end
+        return true
+    end
+    if k == keys.left then
+        if self.cx > 1 then self.cx = self.cx - 1 elseif self.cy > 1 then self.cy = self.cy - 1; self.cx = #L[self.cy] + 1 end
+    elseif k == keys.right then
+        if self.cx <= #L[self.cy] then self.cx = self.cx + 1 elseif self.cy < #L then self.cy = self.cy + 1; self.cx = 1 end
+    elseif k == keys.up then self.cy = self.cy - 1
+    elseif k == keys.down then self.cy = self.cy + 1
+    elseif k == keys.pageUp then self.cy = self.cy - self.h
+    elseif k == keys.pageDown then self.cy = self.cy + self.h
+    elseif k == keys.home then self.cx = 1
+    elseif k == keys["end"] then self.cx = #L[self.cy] + 1
+    elseif k == keys.enter then
+        local indent = L[self.cy]:match("^%s*")
+        self:insert("\n" .. indent)
+    elseif k == keys.tab then self:insert("    ")
+    elseif k == keys.backspace then
+        if self.cx > 1 then
+            L[self.cy] = L[self.cy]:sub(1, self.cx - 2) .. L[self.cy]:sub(self.cx)
+            self.cx = self.cx - 1
+            self:changed()
+        elseif self.cy > 1 then
+            self.cx = #L[self.cy - 1] + 1
+            L[self.cy - 1] = L[self.cy - 1] .. L[self.cy]
+            table.remove(L, self.cy)
+            self.cy = self.cy - 1
+            self:changed()
+        end
+    elseif k == keys.delete then
+        if self.cx <= #L[self.cy] then
+            L[self.cy] = L[self.cy]:sub(1, self.cx - 1) .. L[self.cy]:sub(self.cx + 1)
+            self:changed()
+        elseif self.cy < #L then
+            L[self.cy] = L[self.cy] .. L[self.cy + 1]
+            table.remove(L, self.cy + 1)
+            self:changed()
+        end
+    else
+        return false
+    end
+    self:fix()
+    return true
+end
+function TextArea:click(_, x, y)
+    if self.readonly then return end
+    self.cy = self.sy + (y - self.y) + 1
+    self.cx = self.sx + (x - self.x) + 1
+    self:fix()
+end
+function TextArea:scroll(dir)
+    self.sy = clamp(self.sy + dir * 2, 0, math.max(0, #self.lines - self.h))
+    if not self.readonly then self.cy = clamp(self.cy, self.sy + 1, self.sy + self.h) end
+end
+
 ------------------------------------------------------------------ form
 local Form = {}
 Form.__index = Form
@@ -289,6 +523,7 @@ function ui.form(t, o)
 end
 
 function Form:add(w)
+    w.form = self
     self.widgets[#self.widgets + 1] = w
     if w.focusable and not self.focus and not w.disabled then self.focus = w end
     return w
@@ -327,9 +562,11 @@ function Form:draw()
     local f = self.focus
     if f and f.cursor and not f.hidden then
         local cx, cy = f:cursor()
-        t.setCursorPos(cx, cy)
-        t.setTextColour(f.fg or colors.black)
-        t.setCursorBlink(true)
+        if cx then -- a read-only text box has no cursor
+            t.setCursorPos(cx, cy)
+            t.setTextColour(f.fg or colors.black)
+            t.setCursorBlink(true)
+        end
     end
 end
 
@@ -349,8 +586,17 @@ function Form:event(ev, a, b, c)
             local w = self.widgets[i]
             if not w.hidden and w.scroll and w:hit(b, c) then w:scroll(a) return true end
         end
-    elseif ev == "key" then
-        if a == keys.tab then self:focusNext() return true end
+    elseif ev == "key" or ev == "key_up" then
+        -- Ctrl is tracked for the whole program, not per form: a dialog opened by a
+        -- shortcut gets the key release, and the form underneath must hear about it too.
+        if a == keys.leftCtrl or a == keys.rightCtrl then ui.ctrl = ev == "key" return true end
+        if ev == "key_up" then return false end
+        -- an open menu bar takes the keyboard
+        for _, w in ipairs(self.widgets) do
+            if w.open and w.key and w:key(a, b) then return true end
+        end
+        if ui.ctrl and self.onShortcut and self.onShortcut(a) then return true end
+        if a == keys.tab and not (self.focus and self.focus.lines and not self.focus.readonly) then self:focusNext() return true end
         local f = self.focus
         if f and f.key and f:key(a, b) then return true end
         if self.onKey then return self.onKey(a, b) end
