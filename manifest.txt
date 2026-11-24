@@ -1,0 +1,22 @@
+# Files the installer downloads. Rebuild with: python3 tools/mkmanifest.py
+startup.lua
+system/boot.lua
+system/desktop.lua
+system/kernel.lua
+system/login.lua
+system/shelllib.lua
+system/theme.lua
+system/users.lua
+system/wm.lua
+lib/sha256.lua
+lib/ui.lua
+apps/editor/app.cfg
+apps/editor/main.lua
+apps/files/app.cfg
+apps/files/main.lua
+apps/settings/app.cfg
+apps/settings/main.lua
+apps/shell/app.cfg
+apps/shell/main.lua
+apps/taskmgr/app.cfg
+apps/taskmgr/main.lua
