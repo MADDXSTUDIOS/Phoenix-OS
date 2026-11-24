@@ -48,7 +48,6 @@ if colour then term.setBackgroundColour(colours.cyan) end
 centre(top + 4, "Under development", colours.white)
 centre(top + 6, "Phoenix OS isn't ready to install yet.", colours.lightBlue)
 centre(top + 7, "Check back soon!", colours.lightBlue)
-centre(h - 1, "github.com/MADDXSTUDIOS/Phoenix-OS", colours.lightBlue)
 centre(h, "Press any key", colours.white)
 
 os.pullEvent("key")
