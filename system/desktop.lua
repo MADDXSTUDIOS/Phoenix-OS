@@ -1,7 +1,7 @@
 -- Phoenix OS desktop: wallpaper, desktop icons, the taskbar and the Start menu.
 local sys = sys
 local theme = sys.theme
-local D = { icons = {}, selected = nil, clock = "" }
+local D = { icons = {}, selected = nil, clock = "", tray = {} }
 local rows = {}
 local barMap = {}
 local generation = 0
@@ -15,6 +15,10 @@ local lightColours = {
 }
 
 local function hexOf(c) return sys.wm.hexOf[c] end
+
+-- Pictures for desktop shortcuts: a folder, and a page for files.
+local FOLDER_ICON = { { "\131\131\131\131", "11__", "4444" }, { "\143\143\143\143", "4444", "____" } }
+local DOC_ICON = { { "\157\140\147\129", "0088", "8800" }, { "\143\143\143\143", "0000", "____" } }
 
 local function put(y, x, t, f, b)
     local r = rows[y]
@@ -46,24 +50,48 @@ local function build()
 
     D.icons = {}
     local col, line = 0, 0
-    for _, app in ipairs(sys.kernel.appOrder) do
+    local function place(entry)
+        if 2 + line * 4 + 2 > H - 1 then col, line = col + 1, 0 end
+        local x, y = 2 + col * 10, 2 + line * 4
+        if x + 7 > W then return end
+        for i = 1, 2 do
+            local part = entry.icon and entry.icon[i]
+            if type(part) == "table" and #part[1] == 4 then
+                put(y + i - 1, x + 2, part[1], part[2]:gsub("_", bg), part[3]:gsub("_", bg))
+            end
+        end
+        local name = entry.name:sub(1, 8)
+        local pad = math.floor((8 - #name) / 2)
+        local text = (" "):rep(pad) .. name .. (" "):rep(8 - #name - pad)
+        local selected = D.selected == entry.key
+        put(y + 2, x, text, (selected and "0" or label):rep(8), (selected and hexOf(theme.select) or bg):rep(8))
+        entry.x, entry.y = x, y
+        D.icons[#D.icons + 1] = entry
+        line = line + 1
+    end
+    local K = sys.kernel
+    for _, app in ipairs(K.appOrder) do
         if app.icon and app.desktop ~= false then
-            if 2 + line * 4 + 2 > H - 1 then col, line = col + 1, 0 end
-            local x, y = 2 + col * 10, 2 + line * 4
-            if x + 7 <= W then
-                for i = 1, 2 do
-                    local part = app.icon[i]
-                    if type(part) == "table" and #part[1] == 4 then
-                        put(y + i - 1, x + 2, part[1], part[2]:gsub("_", bg), part[3]:gsub("_", bg))
-                    end
+            place({ key = "app:" .. app.id, name = app.name, icon = app.icon, app = app.id })
+        end
+    end
+    -- shortcuts the user has put on their desktop (/usr/<name>/desktop/*.lnk)
+    local s = K.session
+    local folder = s and ("/usr/" .. s.name .. "/desktop")
+    if folder and fs.isDir(folder) then
+        local names = fs.list(folder)
+        table.sort(names, function(a, b) return a:lower() < b:lower() end)
+        for _, file in ipairs(names) do
+            if file:match("%.lnk$") then
+                local path = folder .. "/" .. file
+                local link = K.readShortcut(path)
+                local icon = DOC_ICON
+                if link and link.app and K.apps[link.app] then
+                    icon = K.apps[link.app].icon or DOC_ICON
+                elseif link and link.target and fs.isDir(link.target) then
+                    icon = FOLDER_ICON
                 end
-                local name = app.name:sub(1, 8)
-                local pad = math.floor((8 - #name) / 2)
-                local text = (" "):rep(pad) .. name .. (" "):rep(8 - #name - pad)
-                local selected = D.selected == app.id
-                put(y + 2, x, text, (selected and "0" or label):rep(8), (selected and hexOf(theme.select) or bg):rep(8))
-                D.icons[#D.icons + 1] = { app = app, x = x, y = y }
-                line = line + 1
+                place({ key = "lnk:" .. path, name = (link and link.name) or file:sub(1, -5), icon = icon, shortcut = path })
             end
         end
     end
@@ -79,12 +107,66 @@ function D.row(y)
     return r[1], r[2], r[3]
 end
 
+------------------------------------------------------------------ tray
+-- Little status icons next to the clock: network (a modem is attached) and sound
+-- (a speaker is attached). White when there, grey when not. Click one for details.
+local function scanTray()
+    local modems, speakers = {}, {}
+    for _, side in ipairs(peripheral.getNames()) do
+        local kind = peripheral.getType(side)
+        if kind == "modem" then
+            local wireless = false
+            pcall(function() wireless = peripheral.call(side, "isWireless") end)
+            modems[#modems + 1] = { side = side, wireless = wireless }
+        elseif kind == "speaker" then
+            speakers[#speakers + 1] = side
+        end
+    end
+    D.tray = {
+        { id = "net", char = "\29", on = #modems > 0, modems = modems },
+        { id = "sound", char = "\14", on = #speakers > 0, speakers = speakers },
+    }
+end
+
+function D.refreshTray()
+    scanTray()
+    sys.wm.dirty = true
+end
+
+local function trayDetails(item)
+    local lines = {}
+    if item.id == "net" then
+        if #item.modems == 0 then
+            lines[#lines + 1] = "No modem attached. Put one on any side to join a network."
+        else
+            for _, m in ipairs(item.modems) do
+                lines[#lines + 1] = (m.wireless and "Wireless" or "Wired") .. " modem on " .. m.side .. "."
+            end
+        end
+        lines[#lines + 1] = http and "Internet (http) is on." or "Internet (http) is off on this server."
+        sys.wm.notify({ title = "Network", text = table.concat(lines, " ") })
+    else
+        if #item.speakers == 0 then
+            lines[#lines + 1] = "No speaker attached."
+        else
+            lines[#lines + 1] = "Speaker on " .. table.concat(item.speakers, ", ") .. "."
+        end
+        sys.wm.notify({ title = "Sound", text = table.concat(lines, " ") })
+    end
+end
+
+local function clockDetails()
+    local real = os.date("%A %d %B %Y, %H:%M")
+    local game = "Day " .. os.day() .. ", " .. textutils.formatTime(os.time(), true)
+    sys.wm.notify({ title = "Date and time", text = real .. ". In game: " .. game .. "." })
+end
+
 ------------------------------------------------------------------ taskbar
 function D.taskbar()
     local W = sys.wm.size()
     local WM = sys.wm
     local bar, text = hexOf(theme.taskbar), hexOf(theme.taskbarText)
-    local open = WM.popup ~= nil
+    local open = WM.popup ~= nil and WM.popup.start == true
     local t = START
     local f = hexOf(open and theme.start or theme.startText):rep(#START)
     local b = hexOf(open and theme.startText or theme.start):rep(#START)
@@ -93,7 +175,9 @@ function D.taskbar()
     for _, win in ipairs(WM.stack) do wins[#wins + 1] = win end
     table.sort(wins, function(a, c) return a.id < c.id end)
     local clock = " " .. D.clock .. " "
-    local room = W - #START - #clock
+    local tray = ""
+    for _, item in ipairs(D.tray) do tray = tray .. " " .. item.char end
+    local room = W - #START - #clock - #tray
     barMap = {}
     local n = #wins
     if n > 0 then
@@ -117,10 +201,20 @@ function D.taskbar()
             end
         end
     end
-    local gap = W - #t - #clock
-    t = t .. (" "):rep(gap) .. clock
-    f = f .. text:rep(gap + #clock)
-    b = b .. bar:rep(gap + #clock)
+    local gap = W - #t - #clock - #tray
+    t = t .. (" "):rep(gap)
+    f = f .. text:rep(gap)
+    b = b .. bar:rep(gap)
+    for _, item in ipairs(D.tray) do
+        item.x = #t + 2
+        t = t .. " " .. item.char
+        f = f .. text .. hexOf(item.on and theme.taskbarText or colors.lightGray)
+        b = b .. bar:rep(2)
+    end
+    D.clockX = #t + 1
+    t = t .. clock
+    f = f .. text:rep(#clock)
+    b = b .. bar:rep(#clock)
     return t, f, b
 end
 
@@ -227,6 +321,7 @@ local function openMenu()
         end
     end
     menu = {
+        start = true,
         x = 1, y = menuY, w = MENU_W, h = h, close = closeMenu,
         row = function(i)
             if i == 1 then
@@ -270,24 +365,84 @@ function D.taskbarClick(_, x)
             return
         end
     end
+    for _, item in ipairs(D.tray) do
+        if item.x and (x == item.x or x == item.x - 1) then trayDetails(item) return end
+    end
+    if D.clockX and x >= D.clockX then clockDetails() end
 end
 
 ------------------------------------------------------------------ desktop icons
-function D.click(_, x, y)
+-- A small menu at x, y in the Start menu's style (used for right-clicks on the desktop).
+local function popupMenu(x, y, items)
+    local WM = sys.wm
+    local W, H = WM.size()
+    local w = 4
+    for _, it in ipairs(items) do w = math.max(w, #it.text + 4) end
+    local h = #items
+    x = math.max(1, math.min(x, W - w + 1))
+    y = math.max(1, math.min(y, H - h))
+    WM.popup = {
+        x = x, y = y, w = w, h = h, close = closeMenu,
+        row = function(i) return menuRow(items[i], w, false) end,
+        click = function(_, _, row)
+            local it = items[row]
+            closeMenu()
+            if it and it.action then it.action() end
+        end,
+        key = function(k) if k ~= keys.leftCtrl then closeMenu() end end,
+    }
+    WM.dirty = true
+end
+
+local function openIcon(icon)
+    local K = sys.kernel
+    if icon.app then
+        K.launchApp(icon.app)
+    elseif icon.shortcut then
+        local ok, err = K.openFile(icon.shortcut)
+        if not ok then sys.wm.alert("Shortcut", tostring(err)) end
+    end
+end
+
+function D.click(button, x, y)
     local hit
     for _, icon in ipairs(D.icons) do
         if x >= icon.x and x < icon.x + 8 and y >= icon.y and y < icon.y + 3 then hit = icon end
     end
+    if button == 2 then
+        D.selected = hit and hit.key or nil
+        build()
+        local K = sys.kernel
+        if hit and hit.shortcut then
+            popupMenu(x, y, {
+                { text = "Open", action = function() openIcon(hit) end },
+                { text = "Remove shortcut", action = function()
+                    fs.delete(hit.shortcut)
+                    D.selected = nil
+                    D.refresh()
+                end },
+            })
+        elseif hit then
+            popupMenu(x, y, { { text = "Open", action = function() openIcon(hit) end } })
+        else
+            popupMenu(x, y, {
+                { text = "Open Files", action = function() K.launchApp("files") end },
+                { text = "Personalise", action = function() K.launchApp("settings") end },
+                { text = "Refresh", action = function() D.refresh() end },
+            })
+        end
+        return
+    end
     local now = os.epoch("utc")
-    if hit and lastIconClick and lastIconClick.id == hit.app.id and now - lastIconClick.at < 500 then
+    if hit and lastIconClick and lastIconClick.key == hit.key and now - lastIconClick.at < 500 then
         lastIconClick = nil
         D.selected = nil
         build()
-        sys.kernel.launchApp(hit.app.id)
+        openIcon(hit)
         return
     end
-    lastIconClick = hit and { id = hit.app.id, at = now } or nil
-    D.selected = hit and hit.app.id or nil
+    lastIconClick = hit and { key = hit.key, at = now } or nil
+    D.selected = hit and hit.key or nil
     D.refresh()
 end
 
@@ -297,6 +452,7 @@ function D.start()
     local mine = generation
     D.selected = nil
     D.clock = clockText()
+    scanTray()
     build()
     local function tick()
         if generation ~= mine then return end

@@ -544,6 +544,57 @@ function K.launchApp(id, args)
     })
 end
 
+------------------------------------------------------------------ opening files
+-- Which app opens which kind of file. Anything not listed opens in the Text Viewer.
+-- /etc/filetypes.cfg can add to or change this: { lua = "viewer", nfp = "paint" }
+K.fileTypes = {
+    txt = "viewer", md = "viewer", log = "viewer", cfg = "viewer", lua = "viewer",
+    json = "viewer", csv = "viewer", ini = "viewer", nfp = "viewer",
+}
+
+local function fileType(path)
+    local ext = path:match("%.([%w_]+)$")
+    ext = ext and ext:lower()
+    local custom = privileged(function()
+        if not orig.fs.exists("/etc/filetypes.cfg") then return nil end
+        local f = orig.fs.open("/etc/filetypes.cfg", "r")
+        local t = textutils.unserialize(f.readAll() or "")
+        f.close()
+        return type(t) == "table" and t or nil
+    end)
+    local app = (custom and ext and custom[ext]) or (ext and K.fileTypes[ext]) or "viewer"
+    if not K.apps[app] then app = "viewer" end
+    return app
+end
+
+-- Shortcuts are small files ending in .lnk: { name = "...", target = "/path" } or { app = "id" }.
+function K.readShortcut(path)
+    local f = fs.open(path, "r") -- as the calling program, so it can only read what it's allowed to
+    if not f then return nil end
+    local data = textutils.unserialize(f.readAll() or "")
+    f.close()
+    if type(data) ~= "table" then return nil end
+    if type(data.target) ~= "string" and type(data.app) ~= "string" then return nil end
+    return data
+end
+
+-- Open a file or folder with the right app. how = "edit" opens files in the Editor.
+function K.openFile(path, how, depth)
+    if type(path) ~= "string" then return nil, "No file given" end
+    path = "/" .. combine(path, "")
+    if not fs.exists(path) then return nil, "There's no " .. path end
+    if fs.isDir(path) then return K.launchApp("files", { path, n = 1 }) end
+    if path:match("%.lnk$") and how ~= "edit" then
+        local link = K.readShortcut(path)
+        if not link then return nil, "That shortcut is broken" end
+        if link.app then return K.launchApp(link.app) end
+        if (depth or 0) > 4 then return nil, "Too many shortcuts in a row" end
+        return K.openFile(link.target, nil, (depth or 0) + 1)
+    end
+    if how == "edit" then return K.launchApp("editor", { path, n = 1 }) end
+    return K.launchApp(fileType(path), { path, n = 1 })
+end
+
 ------------------------------------------------------------------ per-user settings
 local function settingsPath(user) return "/usr/" .. user .. "/.config/phoenix.cfg" end
 
@@ -633,6 +684,14 @@ function K.makeApi(p)
         if type(id) ~= "string" then return nil, "No such app" end
         return K.launchApp(id, tpack(...))
     end
+    -- Open a file, folder or shortcut with the right app; how = "edit" opens it for editing.
+    function A.open(path, how) return K.openFile(path, how) end
+    function A.readShortcut(path)
+        if type(path) ~= "string" then return nil end
+        return K.readShortcut(path)
+    end
+    -- Ask the desktop to redraw (after adding or removing a shortcut on it).
+    function A.refreshDesktop() sys.desktop.refresh() end
     -- Run any program in a new window.
     function A.run(path, ...)
         if type(path) ~= "string" then return nil, "No program given" end
@@ -808,6 +867,9 @@ local function dispatch(ev)
     elseif name == "phoenix_event" then
         local p = K.procs[ev[2]]
         if p then K.resume(p, tunpack(ev, 3, ev.n)) end
+    elseif name == "peripheral" or name == "peripheral_detach" then
+        sys.desktop.refreshTray()
+        for _, p in ipairs(K.list()) do K.resume(p, tunpack(ev, 1, ev.n)) end
     elseif name == "term_resize" then
         sys.wm.resize()
     else

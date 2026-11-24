@@ -223,8 +223,13 @@ function List:select(idx)
     self:ensure()
     if self.onSelect then self.onSelect(self, idx) end
 end
-function List:click(_, _, y)
+function List:click(button, x, y)
     local idx = self.top + (y - self.y)
+    if button == 2 then
+        if self.items[idx] then self:select(idx) else self.sel = 0 end
+        if self.onMenu then self.onMenu(self, self.items[idx] and idx or nil, x, y) end
+        return
+    end
     if not self.items[idx] then return end
     local now = os.epoch("utc")
     local double = idx == self.sel and self.lastClick and now - self.lastClick < 500
@@ -312,6 +317,13 @@ function MenuBar:draw(t, form)
     if self.open then
         local items, dw = self.menus[self.open][2], self.dropW[self.open]
         local dx = self:headX(self.open)
+        t.setBackgroundColour(colors.lightGray) -- shadow, as on right-click menus
+        for j = 2, #items do
+            t.setCursorPos(dx + dw, self.y + j)
+            t.write(" ")
+        end
+        t.setCursorPos(dx + 1, self.y + #items + 1)
+        t.write((" "):rep(dw))
         for j, it in ipairs(items) do
             t.setCursorPos(dx, self.y + j)
             if it[1] == "-" then
@@ -373,6 +385,75 @@ function MenuBar:key(k)
         self:close()
     end
     return true
+end
+
+-- Right-click menu: ui.contextMenu(target, x, y, { { "Open", fn }, { "-" }, { "Delete", fn, disabled = true } })
+-- Draws a menu at x, y (moved to fit), waits for a choice, then runs that item's function.
+-- Clicking anywhere else closes it. Returns the chosen item's label, or nil.
+function ui.contextMenu(t, x, y, items)
+    local W, H = t.getSize()
+    local w = 8
+    for _, it in ipairs(items) do w = math.max(w, #it[1] + 3) end
+    local h = #items
+    x = clamp(x, 1, math.max(1, W - w))
+    y = clamp(y, 1, math.max(1, H - h))
+    local sel = 0
+    local function draw()
+        -- a grey shadow on the right and underneath, so the menu stands out on white
+        t.setBackgroundColour(colors.lightGray)
+        for i = 2, h do
+            t.setCursorPos(x + w, y + i - 1)
+            t.write(" ")
+        end
+        t.setCursorPos(x + 1, y + h)
+        t.write((" "):rep(w))
+        for i, it in ipairs(items) do
+            t.setCursorPos(x, y + i - 1)
+            if it[1] == "-" then
+                t.setBackgroundColour(colors.white)
+                t.setTextColour(colors.lightGray)
+                t.write(("\140"):rep(w))
+            else
+                t.setBackgroundColour(i == sel and colors.blue or colors.white)
+                t.setTextColour(it.disabled and colors.lightGray or (i == sel and colors.white or colors.black))
+                t.write(fit(" " .. it[1], w))
+            end
+        end
+        t.setCursorBlink(false)
+    end
+    local function pick(i)
+        local it = items[i]
+        if not it or it[1] == "-" or it.disabled then return false end
+        if it[2] then it[2]() end
+        return true, it[1]
+    end
+    while true do
+        draw()
+        local ev, a, b, c = os.pullEvent()
+        if ev == "mouse_click" then
+            if b >= x and b < x + w and c >= y and c < y + h then
+                local ok, label = pick(c - y + 1)
+                if ok then return label end
+            else
+                return nil
+            end
+        elseif ev == "key" then
+            if a == keys.down or a == keys.up then
+                local step = a == keys.down and 1 or -1
+                for _ = 1, #items do
+                    sel = (sel - 1 + step) % #items + 1
+                    if items[sel][1] ~= "-" and not items[sel].disabled then break end
+                end
+            elseif a == keys.enter then
+                local ok, label = pick(sel)
+                if ok then return label end
+            elseif a ~= keys.leftCtrl and a ~= keys.rightCtrl then
+                return nil
+            end
+        elseif ev == "term_resize" then
+            return nil
+        end
+    end
 end
 
 -- Text area: { x, y, w, h, lines = { "..." }, readonly, onChange }

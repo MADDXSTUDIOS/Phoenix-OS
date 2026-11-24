@@ -435,7 +435,7 @@ function WM.notify(n)
     local hex = hexOf
     local w = math.min(W - 2, math.max(30, #n.title + 6))
     local lines = ui.wrap(n.text or "", w - 4)
-    local h = #lines + 4
+    local h = #lines + ((n.buttons and #n.buttons > 0) and 4 or 2)
     local buttons, bx = {}, w
     for i = #(n.buttons or {}), 1, -1 do
         local b = n.buttons[i]

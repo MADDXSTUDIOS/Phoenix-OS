@@ -372,6 +372,121 @@ def main():
     check("Hello, aaron" in text(e) and "Press any key to close" in text(e), "running a script opens it in its own window")
     e.key("space", settle=0.3)
 
+    # ---- Files right-click menu, Recycle Bin, shortcuts, tray (on a fresh boot so the screen is clear)
+    main_e = e
+    e = Emu(LUA, root)
+    e.boot()
+    e.run(3)
+    sign_in(e, "aaron", "hunter2")
+    e.run(1)
+    check(desktop(e), "signed in again for the Files tests")
+    check("Recycle" in text(e), "the Recycle Bin is on the desktop")
+    docs = os.path.join(root, "usr", "aaron", "documents")
+    trash_dir = os.path.join(root, "usr", "aaron", ".trash")
+
+    def right(needle, dx=1):
+        p = e.find(needle)
+        check(p, "can see " + needle)
+        e.click(p[0] + dx, p[1], button=2, settle=0.3)
+
+    def pick(label):
+        # the lowest match: toolbars carry some of the same words higher up
+        rows = text(e).split("\n")
+        hits = [(r.find(" " + label + " "), y) for y, r in enumerate(rows) if " " + label + " " in r]
+        check(hits, "menu shows " + label)
+        x, y = hits[-1]
+        e.click(x + 3, y + 1, settle=0.4)
+
+    def close(title):
+        rows = text(e).split("\n")
+        y = next((i for i, r in enumerate(rows) if title in r and "_  +  " in r), None)
+        check(y is not None, "window '" + title + "' is open")
+        x = rows[y].find("_  +  ", rows[y].find(title)) + 6
+        e.click(x + 1, y + 1, settle=0.4)
+        check(not any(title in r and "_  +  " in r for r in text(e).split("\n")), "window '" + title + "' closes")
+
+    menu(e, "Files")
+    p = e.find("documents")
+    e.double_click(p[0] + 1, p[1], settle=0.3)
+    right("hello.txt")
+    t = text(e)
+    check(all(w in t for w in ("Open", "Cut", "Copy", "Rename", "Create shortcut")), "right-clicking a file shows its menu")
+    shot(e, "17_files_menu")
+    pick("Copy")
+    check("Copied hello.txt" in text(e), "Copy says what it copied")
+    rows = e.screen()
+    ey = next(i for i, r in enumerate(rows) if "untitled.txt" in r) + 3  # an empty row under the files
+    e.click(20, ey, button=2, settle=0.3)
+    check("New text file" in text(e) and "Paste" in text(e), "right-clicking empty space shows New and Paste")
+    shot(e, "18_files_empty_menu")
+    pick("Paste")
+    check(os.path.isfile(os.path.join(docs, "hello (2).txt")), "Paste makes a copy with a free name")
+    check(open(os.path.join(docs, "hello (2).txt")).read() == open(os.path.join(docs, "hello.txt")).read(), "and the copy is the same")
+    right("hello (2).txt")
+    pick("Delete")
+    check(not os.path.exists(os.path.join(docs, "hello (2).txt")), "Delete takes it out of the folder")
+    check(os.path.isfile(os.path.join(trash_dir, "hello (2).txt")), "and puts it in the Recycle Bin")
+    right("untitled.txt")
+    pick("Rename")
+    for _ in range(14):
+        e.key("backspace", settle=0.01)
+    e.type("notes.txt")
+    e.key("enter", settle=0.4)
+    check(os.path.isfile(os.path.join(docs, "notes.txt")) and not os.path.exists(os.path.join(docs, "untitled.txt")), "Rename from the menu")
+    right("hello.txt")
+    pick("Create shortcut")
+    lnk = os.path.join(root, "usr", "aaron", "desktop", "hello.txt.lnk")
+    check(os.path.isfile(lnk), "Create shortcut puts a .lnk on the desktop")
+    close("documents - Files")
+    check("hello.tx" in text(e), "the shortcut shows on the desktop")
+    shot(e, "19_desktop_shortcut")
+    p = e.find("hello.tx")
+    e.double_click(p[0] + 1, p[1], settle=0.5)
+    check("hello.txt - Text Viewer" in text(e), "double-clicking the shortcut opens the file")
+    close("hello.txt - Text Viewer")
+
+    # Recycle Bin
+    p = e.find("Recycle")
+    check(p, "the Recycle Bin icon is still there")
+    e.double_click(p[0] + 1, p[1], settle=0.5)
+    check("Recycle Bin" in text(e) and "hello (2).txt" in text(e), "the Recycle Bin lists what was deleted")
+    shot(e, "20_recycle_bin")
+    right("hello (2).txt")
+    check("Restore" in text(e) and "Delete for good" in text(e), "right-clicking in the bin offers Restore")
+    pick("Restore")
+    check(os.path.isfile(os.path.join(docs, "hello (2).txt")), "Restore puts it back where it was")
+    check("The Recycle Bin is empty" in text(e), "and the bin is empty again")
+    close("Recycle Bin")
+
+    # desktop right-click menus
+    p = e.find("hello.tx")
+    e.click(p[0] + 1, p[1], button=2, settle=0.3)
+    check("Remove shortcut" in text(e), "right-clicking a shortcut offers to remove it")
+    shot(e, "21_desktop_menu")
+    pick("Remove shortcut")
+    check(not os.path.exists(lnk) and "hello.tx" not in text(e), "Remove shortcut takes it off the desktop")
+    check(os.path.isfile(os.path.join(docs, "hello.txt")), "but leaves the file alone")
+    e.click(30, 8, button=2, settle=0.3)
+    check("Personalise" in text(e) and "Refresh" in text(e), "right-clicking the desktop shows its menu")
+    e.click(30, 3, settle=0.3)
+    check("Personalise" not in text(e), "clicking elsewhere closes it")
+
+    # tray and clock
+    bar = e.screen()[e.h - 1]
+    net_x = bar.rfind("#", 0, bar.rfind("#"))  # network, then speaker, then the clock
+    e.click(net_x + 1, e.h, settle=0.3)
+    check("Network" in text(e) and "No modem attached" in text(e), "clicking the network icon says there's no modem")
+    shot(e, "22a_network")
+    p = e.find("Network")
+    close_x = e.screen()[p[1] - 1].rfind("#") + 1
+    e.click(close_x, p[1], settle=0.3)
+    check("No modem attached" not in text(e), "and its box closes")
+    clock_x = len(bar.rstrip()) - 2
+    e.click(clock_x, e.h, settle=0.3)
+    check("Date and time" in text(e) and "In game: Day" in text(e), "clicking the clock shows the date")
+    shot(e, "22_clock")
+    e = main_e
+
     # ---- lock and unlock (programs stay open)
     menu(e, "Lock")
     check("Locked" in text(e) and "Unlock" in text(e), "Lock shows the lock screen")
@@ -381,7 +496,7 @@ def main():
     check("Wrong password" in text(e), "wrong password is refused")
     e.type("hunter2")
     e.key("enter", settle=0.5)
-    check(desktop(e) and "Setti" in e.screen()[e.h - 1], "unlocking returns to the desktop with windows intact")
+    check(desktop(e) and "Sett" in e.screen()[e.h - 1], "unlocking returns to the desktop with windows intact")
 
     # ---- sign out, sign in as the standard user
     menu(e, "Sign out")
