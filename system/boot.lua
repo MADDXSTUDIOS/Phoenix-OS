@@ -1,5 +1,5 @@
 -- Phoenix OS boot: check the computer, load the system and start the kernel.
-local VERSION = "0.1.1"
+local VERSION = "0.1.2-dev"
 local EDITION = "Standard"
 local MIN_W, MIN_H = 51, 19
 

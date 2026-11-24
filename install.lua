@@ -1,10 +1,12 @@
 -- Phoenix OS installer.
 --   wget run https://raw.githubusercontent.com/MADDXSTUDIOS/Phoenix-OS/main/install.lua
+-- or, for development builds (the computer then keeps updating from dev):
+--   wget run https://raw.githubusercontent.com/MADDXSTUDIOS/Phoenix-OS/dev/install.lua dev
 -- Downloads every file listed in manifest.txt, then restarts into Phoenix OS.
--- Accounts, settings and user files (/etc, /usr) are left alone, so running it
--- again updates an existing install.
-local BASE = "https://raw.githubusercontent.com/MADDXSTUDIOS/Phoenix-OS/main/"
-local base = ... or BASE
+-- Accounts, settings and user files (/etc, /usr) are left alone.
+local REPO = "https://raw.githubusercontent.com/MADDXSTUDIOS/Phoenix-OS/"
+local branch = ... or "main"
+local base = branch:match("^https?://") and branch or (REPO .. branch .. "/")
 if base:sub(-1) ~= "/" then base = base .. "/" end
 
 local function fetch(path)
@@ -67,6 +69,12 @@ end
 local f = fs.open("system/manifest.txt", "w")
 f.write(manifest)
 f.close()
+-- Remember the branch so updates keep coming from the same place.
+if not branch:match("^https?://") then
+    f = fs.open("etc/update.cfg", "w")
+    f.write(textutils.serialize({ branch = branch }))
+    f.close()
+end
 print()
 if term.isColour() then term.setTextColour(colours.lime) end
 print("Phoenix OS installed.")

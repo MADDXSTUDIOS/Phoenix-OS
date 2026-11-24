@@ -1,7 +1,7 @@
 # Phoenix OS
 
 A Windows-style desktop operating system for CC:Tweaked advanced computers
-(Minecraft 1.21.1). This is **Phoenix OS Standard 0.1.1**, the first working core.
+(Minecraft 1.21.1). This is **Phoenix OS Standard** (the `dev` branch: `0.1.2-dev`), the first working core.
 
 ## Install
 
@@ -24,6 +24,18 @@ because each release has a build code made from all of its files. To test work i
 progress, push it to another branch and point a computer at it with
 `update branch dev` in the Shell (or the Branch button in Settings); `update branch main`
 goes back. `update force` reinstalls even when it's already up to date.
+
+## Versions and branches
+
+- `main` holds releases only, e.g. `0.1.1`. Normal computers update from here.
+- `dev` is work in progress and carries the next version with `-dev` on the end, e.g. `0.1.2-dev`.
+  Install a test computer straight from it with
+  `wget run https://raw.githubusercontent.com/MADDXSTUDIOS/Phoenix-OS/dev/install.lua dev`
+  and it keeps updating from dev.
+- Builds handed to other people to test get `-alpha.1`, `-alpha.2` (rough, things missing),
+  then `-beta.1`... (feature-complete, bug fixing).
+- To release: drop the tag in `system/boot.lua`, rebuild the manifest, merge `dev` into `main`,
+  then bump dev to the next `-dev` version.
 
 **Before committing changes to the OS, run `python3 tools/mkmanifest.py`** so the
 file list and build code are current, otherwise computers won't see the update.
