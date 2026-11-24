@@ -178,14 +178,16 @@ local function rowOf(win, y)
     return x, "\149" .. t .. "\149", edge .. f .. frame, frame .. b .. edge
 end
 
--- Make a row of blank cells look taller downwards into the next row, or rather: paint
--- the bottom third of blank cells in the given colours (one hex digit per column).
--- CC's font sits at the top of each row, so this is how a bar gets its text centred:
--- the bar's colour starts a third of a row higher, above the text.
+-- Paint the bottom third of cells in the given colours (one hex digit per column),
+-- covering whatever was there. CC's font sits at the top of each row, so this is how
+-- a bar gets its text centred: the bar's colour starts a third of a row higher.
+-- The screen's first and last columns are left alone: CC fills the border round the
+-- screen with the end cells' background colour, which would make the strip poke up
+-- a whole row at the edges.
 local function bandBelow(t, f, b, x1, colours)
     for i = 1, #colours do
         local x = x1 + i - 1
-        if x >= 1 and x <= #t and t:sub(x, x) == " " then
+        if x > 1 and x < W and x <= #t then
             t = t:sub(1, x - 1) .. "\143" .. t:sub(x + 1)
             f = f:sub(1, x - 1) .. b:sub(x, x) .. f:sub(x + 1)
             b = b:sub(1, x - 1) .. colours:sub(i, i) .. b:sub(x + 1)

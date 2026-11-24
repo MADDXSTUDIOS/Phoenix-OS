@@ -1,6 +1,6 @@
 # Files the installer and updater download. Rebuild with: python3 tools/mkmanifest.py
 # version = 0.1.2-dev
-# build = a75f0a34087fa26c
+# build = 61bb6d951b154d16
 startup.lua
 system/boot.lua
 system/desktop.lua

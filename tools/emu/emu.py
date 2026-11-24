@@ -177,8 +177,11 @@ class Emu:
                 break
         return self._font
 
-    def png(self, path, scale=3):
-        """Save the screen as a PNG, drawn with CC's real font when it's available."""
+    def png(self, path, scale=3, margin=2):
+        """Save the screen as a PNG, drawn with CC's real font when it's available.
+
+        margin: CC pads the screen with a border (in font pixels) filled with the
+        background colour of the nearest edge cell, like the in-game computer does."""
         from PIL import Image, ImageDraw, ImageFont
         text, fg, bg, pal, cx, cy, blink = self.dump()
         cw, ch = 6 * scale, 9 * scale
@@ -218,5 +221,21 @@ class Emu:
                         d.text((x0 + cw / 2, y0 + ch / 2), s, fill=f, font=font, anchor="mm")
         if blink and 1 <= cx <= self.w and 1 <= cy <= self.h:
             d.rectangle([(cx - 1) * cw, cy * ch - scale * 2, cx * cw - 1, cy * ch - scale], fill=(255, 255, 255))
+        if margin:
+            m = margin * scale
+            out = Image.new("RGB", (img.width + 2 * m, img.height + 2 * m))
+            od = ImageDraw.Draw(out)
+            for y in range(self.h):  # left and right borders take each row's end cells' background
+                od.rectangle([0, m + y * ch, m - 1, m + (y + 1) * ch - 1], fill=col(bg[y][0]))
+                od.rectangle([out.width - m, m + y * ch, out.width - 1, m + (y + 1) * ch - 1], fill=col(bg[y][-1]))
+            for x in range(self.w):  # top and bottom borders take the first and last rows
+                od.rectangle([m + x * cw, 0, m + (x + 1) * cw - 1, m - 1], fill=col(bg[0][x]))
+                od.rectangle([m + x * cw, out.height - m, m + (x + 1) * cw - 1, out.height - 1], fill=col(bg[-1][x]))
+            for cx_, cy_ in ((0, 0), (1, 0), (0, 1), (1, 1)):
+                c = col(bg[-1 if cy_ else 0][-1 if cx_ else 0])
+                x0, y0 = (out.width - m if cx_ else 0), (out.height - m if cy_ else 0)
+                od.rectangle([x0, y0, x0 + m - 1, y0 + m - 1], fill=c)
+            out.paste(img, (m, m))
+            img = out
         img.save(path)
         return path
