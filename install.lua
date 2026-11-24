@@ -63,6 +63,7 @@ local function page(subtitle)
     centre(TOP + 2, "P H O E N I X   O S", C.white, C.orange)
     term.setBackgroundColour(C.cyan)
     if subtitle then centre(TOP + 5, subtitle, C.white) end
+    centre(H, "Phoenix Software 2026", C.lightBlue, C.cyan)
 end
 
 local BAR_W = math.min(41, W - 10)
