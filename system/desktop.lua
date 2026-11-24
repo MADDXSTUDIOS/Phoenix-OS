@@ -121,7 +121,10 @@ function D.taskbar()
     t = t .. (" "):rep(gap) .. clock
     f = f .. text:rep(gap + #clock)
     b = b .. bar:rep(gap + #clock)
-    return t, f, b
+    -- 4th value: the colours for the strip drawn above the taskbar (dividers just use the bar colour)
+    local cells = {}
+    for i = 1, #t do cells[i] = t:sub(i, i) == "\149" and bar or b:sub(i, i) end
+    return t, f, b, table.concat(cells)
 end
 
 ------------------------------------------------------------------ start menu
@@ -136,8 +139,10 @@ local function menuRow(it, w, selected)
     local bg, fg = hexOf(theme.menu), hexOf(theme.menuText)
     if not it then return (" "):rep(w), fg:rep(w), bg:rep(w) end
     if it.sep then return ("\140"):rep(w), hexOf(colors.lightGray):rep(w), bg:rep(w) end
-    if selected then bg, fg = hexOf(theme.select), hexOf(theme.selectText) end
-    local text = "  " .. it.text
+    -- The selected item is shown with blue text and a marker rather than a coloured bar:
+    -- CC's text sits at the top of each row, so a bar makes the line below look cramped.
+    local text = (selected and " \16" or "  ") .. it.text
+    if selected then fg = hexOf(theme.select) end
     if it.group then text = text .. (" "):rep(w - #text - 2) .. "\16 " end
     return text .. (" "):rep(w - #text), fg:rep(w), bg:rep(w)
 end
@@ -177,7 +182,7 @@ local function openMenu()
     items[#items + 1] = { text = "Sign out", action = function() K.power("logoff") end }
     items[#items + 1] = { text = "Restart", action = function() K.power("reboot") end }
     items[#items + 1] = { text = "Shut down", action = function() K.power("shutdown") end }
-    local h = math.min(#items + 1, H - 1)
+    local h = math.min(#items + 2, H - 1) -- name bar, a blank line, then the items
     local menuY = H - h
     local sel = 0
     local menu
@@ -192,7 +197,7 @@ local function openMenu()
         local fsel = 0
         local fh = #g.items
         local fly = { x = MENU_W + 1, w = FLY_W, h = fh, group = i }
-        fly.y = math.min(menuY + i, H - fh) -- line up with the group's row, but stay above the taskbar
+        fly.y = math.min(menuY + i + 1, H - fh) -- line up with the group's row, but stay above the taskbar
         local function run(j)
             local it = g.items[j]
             if it then
@@ -225,7 +230,7 @@ local function openMenu()
         end
     end
     menu = {
-        x = 1, y = menuY, w = MENU_W, h = h, close = closeMenu,
+        x = 1, y = menuY, w = MENU_W, h = h, close = closeMenu, band = hexOf(theme.select),
         row = function(i)
             if i == 1 then
                 local name = " \2 " .. K.session.name
@@ -233,11 +238,11 @@ local function openMenu()
                 name = name:sub(1, MENU_W)
                 return name .. (" "):rep(MENU_W - #name), ("0"):rep(MENU_W), hexOf(theme.select):rep(MENU_W)
             end
-            return menuRow(items[i - 1], MENU_W, i - 1 == sel)
+            return menuRow(items[i - 2], MENU_W, i - 2 == sel)
         end,
         click = function(_, _, y)
-            if menu.flyout and items[y - 1] ~= items[menu.flyout.group] then closeFlyout() end
-            choose(y - 1)
+            if menu.flyout and items[y - 2] ~= items[menu.flyout.group] then closeFlyout() end
+            choose(y - 2)
         end,
         key = function(k)
             if menu.flyout then return menu.flyout.key(k) end
