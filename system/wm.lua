@@ -29,7 +29,7 @@ local function isMax(win) return win.state == "max" end
 
 -- Where the program's own area sits on screen: x, y, width, height.
 local function content(win)
-    if isMax(win) then return 1, 2, W, H - 3 end
+    if isMax(win) then return 1, 2, W, H - 2 end
     return win.x + 1, win.y + 1, win.w - 2, win.h - 2
 end
 
@@ -162,13 +162,7 @@ local function rowOf(win, y)
     local ry = y - y0
     if ry < 0 or ry >= h then return nil end
     if ry == 0 then return x, titleRow(win, w) end
-    if isMax(win) then
-        if ry == h - 1 then -- spare row above the taskbar: blank, in the content's colour
-            local _, _, lb = win.buf.getLine(h - 2)
-            return x, (" "):rep(w), ("0"):rep(w), lb
-        end
-        return x, win.buf.getLine(ry)
-    end
+    if isMax(win) then return x, win.buf.getLine(ry) end
     local edge = hexOf[win == WM.active and theme.titleActive or theme.titleInactive]
     local frame = hexOf[theme.frame]
     if ry == h - 1 then
@@ -176,24 +170,6 @@ local function rowOf(win, y)
     end
     local t, f, b = win.buf.getLine(ry)
     return x, "\149" .. t .. "\149", edge .. f .. frame, frame .. b .. edge
-end
-
--- Paint the bottom third of cells in the given colours (one hex digit per column),
--- covering whatever was there. CC's font sits at the top of each row, so this is how
--- a bar gets its text centred: the bar's colour starts a third of a row higher.
--- The screen's first and last columns are left alone: CC fills the border round the
--- screen with the end cells' background colour, which would make the strip poke up
--- a whole row at the edges.
-local function bandBelow(t, f, b, x1, colours)
-    for i = 1, #colours do
-        local x = x1 + i - 1
-        if x > 1 and x < W and x <= #t then
-            t = t:sub(1, x - 1) .. "\143" .. t:sub(x + 1)
-            f = f:sub(1, x - 1) .. b:sub(x, x) .. f:sub(x + 1)
-            b = b:sub(1, x - 1) .. colours:sub(i, i) .. b:sub(x + 1)
-        end
-    end
-    return t, f, b
 end
 
 local function splice(t, f, b, x, st, sf, sb)
@@ -218,7 +194,7 @@ function WM.flush()
     if not WM.dirty then return end
     WM.dirty = false
     local overlay, popup = WM.overlay, WM.popup
-    local barT, barF, barB, barBand = sys.desktop.taskbar()
+    local barT, barF, barB = sys.desktop.taskbar()
     for y = 1, H do
         local t, f, b
         if overlay then
@@ -233,12 +209,6 @@ function WM.flush()
                     local x, wt, wf, wb = rowOf(win, y)
                     if x then t, f, b = splice(t, f, b, x, wt, wf, wb) end
                 end
-            end
-            -- the taskbar starts a third of a row higher, so its text sits in the middle
-            if y == H - 1 then t, f, b = bandBelow(t, f, b, 1, barBand or barB) end
-            -- same for a menu's top bar (the Start menu's name bar)
-            if popup and popup.band and y == popup.y - 1 then
-                t, f, b = bandBelow(t, f, b, popup.x, popup.band:rep(popup.w))
             end
             if popup and y >= popup.y and y < popup.y + popup.h then
                 t, f, b = splice(t, f, b, popup.x, popup.row(y - popup.y + 1))

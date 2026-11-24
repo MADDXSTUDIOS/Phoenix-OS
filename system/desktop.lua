@@ -121,10 +121,7 @@ function D.taskbar()
     t = t .. (" "):rep(gap) .. clock
     f = f .. text:rep(gap + #clock)
     b = b .. bar:rep(gap + #clock)
-    -- 4th value: the colours for the strip drawn above the taskbar (dividers just use the bar colour)
-    local cells = {}
-    for i = 1, #t do cells[i] = t:sub(i, i) == "\149" and bar or b:sub(i, i) end
-    return t, f, b, table.concat(cells)
+    return t, f, b
 end
 
 ------------------------------------------------------------------ start menu
@@ -230,7 +227,7 @@ local function openMenu()
         end
     end
     menu = {
-        x = 1, y = menuY, w = MENU_W, h = h, close = closeMenu, band = hexOf(theme.select),
+        x = 1, y = menuY, w = MENU_W, h = h, close = closeMenu,
         row = function(i)
             if i == 1 then
                 local name = " \2 " .. K.session.name
