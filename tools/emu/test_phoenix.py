@@ -437,13 +437,25 @@ def main():
     check("Update available" in text(e), "the notification comes back at the next sign-in")
     p = e.find(" Update   Later ")  # the button row, not the "Update available" title
     e.click(p[0] + 2, p[1], settle=1)
-    check("Install 0.1" in text(e) and "restarts afterwards" in text(e), "Update opens Settings and asks to install")
+    check("downloaded and installed" in text(e) and "need to restart" in text(e), "Update opens Settings and warns it will restart")
     shot(e, "21_update_from_notification")
     p = e.find(" Cancel ")
     e.click(p[0] + 1, p[1], settle=0.3)
     check("An update is available" in text(e), "cancelling leaves Settings on the Updates page")
+    # install from Settings, then choose Later: files are updated but nothing restarts
+    boots = e.E.boots or 0
+    p = e.find(" Check   Update ")
+    e.click(p[0] + 10, p[1], settle=0.5)
+    check("need to restart" in text(e), "the Update button warns before installing")
+    e.key("enter", settle=1)  # Update
+    check("Restart required" in text(e) and "Restart now" in text(e), "after installing it asks to restart")
+    shot(e, "21b_restart_required")
+    p = e.find(" Later ")
+    e.click(p[0] + 1, p[1], settle=0.5)
+    check("Restart to finish updating" in text(e) and (e.E.boots or 0) == boots, "Later doesn't restart")
+    check("# build = new" in open(os.path.join(blank, "system", "manifest.txt")).read(), "but the update is installed")
     menu(e, "Shell")
-    e.type("update")
+    e.type("update force")
     e.key("enter", settle=1)
     check("Available:" in text(e) and "Install it and restart?" in text(e), "shell update finds the new build")
     shot(e, "22_update_shell")

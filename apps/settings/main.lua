@@ -157,14 +157,26 @@ end
 
 local function doInstall()
     if not (found and found.available) then return end
-    if ui.message(t, "Update", "Install " .. update.describe(found) .. "? The computer restarts afterwards; save your work first.", { "Install", "Cancel" }) ~= 1 then return end
+    local answer = ui.message(t, "Update Phoenix OS",
+        "Phoenix OS " .. update.describe(found) .. " will be downloaded and installed.\n\n"
+        .. "Your computer will need to restart afterwards, so save your work first.",
+        { "Update", "Cancel" })
+    if answer ~= 1 then return end
     local ok, err = update.install(found, function(done, total)
         say(("Downloading %d of %d..."):format(done, total))
     end)
     if not ok then say(err) return end
-    say("Updated. Restarting...")
-    sleep(1)
-    phoenix.power.reboot()
+    found = nil
+    -- The new files are in place; they take over at the next restart.
+    if ui.message(t, "Restart required", "The update is installed. Restart now to finish updating?",
+        { "Restart now", "Later" }) == 1 then
+        say("Restarting...")
+        sleep(0.5)
+        phoenix.power.reboot()
+    else
+        say("Restart to finish updating.")
+        rebuild()
+    end
 end
 
 build[4] = function(x, w, h)
