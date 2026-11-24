@@ -33,6 +33,7 @@ class Emu:
                  http_prefix=None, capacity=1000000, http_delay=None):
         """lua_dir: CC:Tweaked's data/computercraft/lua folder (holds bios.lua and rom/)."""
         self.w, self.h = w, h
+        self.lua_dir = os.path.abspath(lua_dir)
         self.lua = lua52.LuaRuntime(unpack_returned_tuples=True, encoding="latin-1")
         L = self.lua
         os.makedirs(root, exist_ok=True)
@@ -157,12 +158,33 @@ class Emu:
                 return x + 1, y + 1
         return None
 
+    def _cc_font(self):
+        """Glyph masks from CC:Tweaked's own term_font.png, if it can be found next to the ROM."""
+        if hasattr(self, "_font"):
+            return self._font
+        from PIL import Image
+        self._font = None
+        lua = self.E and getattr(self, "lua_dir", None)
+        for cand in (os.environ.get("CC_FONT"),
+                     lua and os.path.join(lua, "..", "..", "..", "assets", "computercraft", "textures", "gui", "term_font.png")):
+            if cand and os.path.isfile(cand):
+                atlas = Image.open(cand).convert("RGBA")
+                glyphs = {}
+                for code in range(256):
+                    x, y = 1 + (code % 16) * 8, 1 + (code // 16) * 11
+                    glyphs[code] = atlas.crop((x, y, x + 6, y + 9)).getchannel("A")
+                self._font = glyphs
+                break
+        return self._font
+
     def png(self, path, scale=3):
+        """Save the screen as a PNG, drawn with CC's real font when it's available."""
         from PIL import Image, ImageDraw, ImageFont
         text, fg, bg, pal, cx, cy, blink = self.dump()
         cw, ch = 6 * scale, 9 * scale
         img = Image.new("RGB", (self.w * cw, self.h * ch))
         d = ImageDraw.Draw(img)
+        glyphs = self._cc_font()
         font = None
         for cand in ("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
                      "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"):
@@ -180,7 +202,10 @@ class Emu:
                 f, b = col(fg[y][x]), col(bg[y][x])
                 x0, y0 = x * cw, y * ch
                 d.rectangle([x0, y0, x0 + cw - 1, y0 + ch - 1], fill=b)
-                if 128 <= c <= 159:
+                if glyphs and c not in (0, 32):
+                    mask = glyphs[c].resize((cw, ch), Image.NEAREST)
+                    img.paste(f, (x0, y0), mask)
+                elif 128 <= c <= 159:
                     bits = c - 128
                     for i in range(5):
                         if bits & (1 << i):
