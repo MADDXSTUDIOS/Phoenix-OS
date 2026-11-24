@@ -212,6 +212,10 @@ function WM.flush()
             if popup and y >= popup.y and y < popup.y + popup.h then
                 t, f, b = splice(t, f, b, popup.x, popup.row(y - popup.y + 1))
             end
+            local fly = popup and popup.flyout -- a sub-menu popping out of the menu
+            if fly and y >= fly.y and y < fly.y + fly.h then
+                t, f, b = splice(t, f, b, fly.x, fly.row(y - fly.y + 1))
+            end
             local toast = WM.toast
             if toast then
                 local tx, ty = W - toast.w, H - toast.h
@@ -326,6 +330,11 @@ local function mouse(name, a, x, y)
     end
     local popup = WM.popup
     if popup then
+        local fly = popup.flyout
+        if fly and x >= fly.x and x < fly.x + fly.w and y >= fly.y and y < fly.y + fly.h then
+            fly.click(a, x - fly.x + 1, y - fly.y + 1)
+            return
+        end
         if x >= popup.x and x < popup.x + popup.w and y >= popup.y and y < popup.y + popup.h then
             popup.click(a, x - popup.x + 1, y - popup.y + 1)
             return

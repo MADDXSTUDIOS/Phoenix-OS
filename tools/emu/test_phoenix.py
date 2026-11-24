@@ -64,9 +64,23 @@ def install(root):
             shutil.copy2(src, dst)
 
 
+GROUPED = {"Shell": "Utilities", "Settings": "Utilities", "Tasks": "Utilities"}
+
+
 def menu(e, item):
-    """Open the Start menu and click an entry by its text."""
+    """Open the Start menu and click an entry by its text (going through its sub-menu if it has one)."""
     e.click(3, e.h)
+    if item in GROUPED:
+        pos = e.find("  " + GROUPED[item])
+        check(pos, "Start menu shows " + GROUPED[item])
+        e.click(pos[0] + 3, pos[1])
+        # look only in the sub-menu, which pops out to the right of the menu (columns 23+)
+        for y, row in enumerate(text(e).split("\n")):
+            x = row.find("  " + item, 22)
+            if x >= 0:
+                e.click(x + 4, y + 1, settle=0.5)
+                return
+        check(False, "Utilities shows " + item)
     pos = e.find("  " + item)
     check(pos, "Start menu shows " + item)
     e.click(pos[0] + 3, pos[1], settle=0.5)
@@ -129,7 +143,19 @@ def main():
     # ---- start menu, apps, windows
     e.click(3, e.h)
     check("aaron (admin)" in text(e) and "Shut down" in text(e), "Start menu opens")
+    rows = e.screen()
+    top = e.find("aaron (admin)")[1]  # the menu runs from the name row down to the taskbar
+    menu_text = "\n".join(r[:22] for r in rows[top - 1:e.h - 1])
+    check("Files" in menu_text and "Editor" in menu_text and "Utilities" in menu_text, "Files, Editor and Utilities are in the Start menu")
+    check("Shell" not in menu_text and "Settings" not in menu_text and "Tasks" not in menu_text, "Settings, Tasks and Shell aren't loose in it")
     shot(e, "04_start_menu")
+    pos = e.find("  Utilities")
+    e.click(pos[0] + 3, pos[1])
+    fly = "\n".join(r[22:40] for r in e.screen()[top - 1:e.h - 1])
+    check("Settings" in fly and "Tasks" in fly and "Shell" in fly, "Utilities pops out Settings, Tasks and Shell")
+    shot(e, "04b_utilities")
+    e.click(pos[0] + 3, pos[1])
+    check("Shell" not in "\n".join(r[22:40] for r in e.screen()[top - 1:e.h - 1]), "clicking Utilities again closes the sub-menu")
     e.click(40, 5)
     check("Shut down" not in text(e), "clicking away closes the Start menu")
 

@@ -130,31 +130,102 @@ local function closeMenu()
     sys.wm.dirty = true
 end
 
+-- One column of menu items: a list of { text =, action = } / { sep = true } / { text =, group = }.
+-- Returns the row text, colours for item i at width w, with sel highlighted.
+local function menuRow(it, w, selected)
+    local bg, fg = hexOf(theme.menu), hexOf(theme.menuText)
+    if not it then return (" "):rep(w), fg:rep(w), bg:rep(w) end
+    if it.sep then return ("\140"):rep(w), hexOf(colors.lightGray):rep(w), bg:rep(w) end
+    if selected then bg, fg = hexOf(theme.select), hexOf(theme.selectText) end
+    local text = "  " .. it.text
+    if it.group then text = text .. (" "):rep(w - #text - 2) .. "\16 " end
+    return text .. (" "):rep(w - #text), fg:rep(w), bg:rep(w)
+end
+
+local FLY_W = 16
+
 local function openMenu()
     local K = sys.kernel
     local _, H = sys.wm.size()
-    local items = {}
+    -- Apps with a group (e.g. "Utilities") go in a sub-menu that pops out to the side.
+    local items, groups = {}, {}
     for _, app in ipairs(K.appOrder) do
         if not app.hidden then
-            items[#items + 1] = { text = app.name, action = function() K.launchApp(app.id) end }
+            local entry = { text = app.name, action = function() K.launchApp(app.id) end }
+            if type(app.group) == "string" then
+                local g = groups[app.group]
+                if not g then
+                    g = { text = app.group, group = app.group, items = {} }
+                    groups[app.group] = g
+                    items[#items + 1] = g
+                end
+                g.items[#g.items + 1] = entry
+            else
+                items[#items + 1] = entry
+            end
         end
     end
+    -- Plain apps first, then the groups, each keeping their order.
+    local plain, grouped = {}, {}
+    for _, it in ipairs(items) do
+        if it.group then grouped[#grouped + 1] = it else plain[#plain + 1] = it end
+    end
+    items = plain
+    for _, g in ipairs(grouped) do items[#items + 1] = g end
     items[#items + 1] = { sep = true }
     items[#items + 1] = { text = "Lock", action = function() K.power("lock") end }
     items[#items + 1] = { text = "Sign out", action = function() K.power("logoff") end }
     items[#items + 1] = { text = "Restart", action = function() K.power("reboot") end }
     items[#items + 1] = { text = "Shut down", action = function() K.power("shutdown") end }
     local h = math.min(#items + 1, H - 1)
+    local menuY = H - h
     local sel = 0
+    local menu
+
+    local function closeFlyout()
+        menu.flyout = nil
+        sys.wm.dirty = true
+    end
+
+    local function openFlyout(i)
+        local g = items[i]
+        local fsel = 0
+        local fh = #g.items
+        local fly = { x = MENU_W + 1, w = FLY_W, h = fh, group = i }
+        fly.y = math.min(menuY + i, H - fh) -- line up with the group's row, but stay above the taskbar
+        local function run(j)
+            local it = g.items[j]
+            if it then
+                closeMenu()
+                it.action()
+            end
+        end
+        fly.row = function(j) return menuRow(g.items[j], FLY_W, j == fsel) end
+        fly.click = function(_, _, y) run(y) end
+        fly.key = function(k)
+            if k == keys.down then fsel = fsel % fh + 1
+            elseif k == keys.up then fsel = (fsel - 2) % fh + 1
+            elseif k == keys.enter or k == keys.right then run(fsel)
+            elseif k == keys.left then closeFlyout()
+            end
+        end
+        menu.flyout = fly
+        sys.wm.dirty = true
+    end
+
     local function choose(i)
         local it = items[i]
-        if it and it.action then
+        if not it then return end
+        if it.group then
+            sel = i
+            if menu.flyout and menu.flyout.group == i then closeFlyout() else openFlyout(i) end
+        elseif it.action then
             closeMenu()
             it.action()
         end
     end
-    sys.wm.popup = {
-        x = 1, y = H - h, w = MENU_W, h = h, close = closeMenu,
+    menu = {
+        x = 1, y = menuY, w = MENU_W, h = h, close = closeMenu,
         row = function(i)
             if i == 1 then
                 local name = " \2 " .. K.session.name
@@ -162,27 +233,26 @@ local function openMenu()
                 name = name:sub(1, MENU_W)
                 return name .. (" "):rep(MENU_W - #name), ("0"):rep(MENU_W), hexOf(theme.select):rep(MENU_W)
             end
-            local it = items[i - 1]
-            local bg, fg = hexOf(theme.menu), hexOf(theme.menuText)
-            if not it then return (" "):rep(MENU_W), fg:rep(MENU_W), bg:rep(MENU_W) end
-            if it.sep then return ("\140"):rep(MENU_W), hexOf(colors.lightGray):rep(MENU_W), bg:rep(MENU_W) end
-            if i - 1 == sel then bg, fg = hexOf(theme.select), hexOf(theme.selectText) end
-            local text = "  " .. it.text
-            return text .. (" "):rep(MENU_W - #text), fg:rep(MENU_W), bg:rep(MENU_W)
+            return menuRow(items[i - 1], MENU_W, i - 1 == sel)
         end,
-        click = function(_, _, y) choose(y - 1) end,
+        click = function(_, _, y)
+            if menu.flyout and items[y - 1] ~= items[menu.flyout.group] then closeFlyout() end
+            choose(y - 1)
+        end,
         key = function(k)
+            if menu.flyout then return menu.flyout.key(k) end
             local step = (k == keys.down and 1) or (k == keys.up and -1) or 0
             if step ~= 0 then
                 repeat
                     sel = sel + step
                     if sel < 1 then sel = #items elseif sel > #items then sel = 1 end
                 until not items[sel].sep
-            elseif k == keys.enter then
+            elseif k == keys.enter or (k == keys.right and items[sel] and items[sel].group) then
                 choose(sel)
             end
         end,
     }
+    sys.wm.popup = menu
     sys.wm.dirty = true
 end
 
