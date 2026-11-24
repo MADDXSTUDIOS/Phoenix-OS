@@ -495,19 +495,28 @@ end
 
 ------------------------------------------------------------------ apps
 -- Every folder in /apps with an app.cfg is an installed app.
+-- Apps are folders holding app.cfg + main.lua: built-in ones in /apps, installed
+-- programs in /opt. An app goes in the Start menu's "Programs" sub-menu unless its
+-- app.cfg names another group (group = "Utilities") or none (group = false).
 function K.scanApps()
     K.apps, K.appOrder = {}, {}
-    if not orig.fs.isDir("/apps") then return end
-    for _, id in ipairs(orig.fs.list("/apps")) do
-        local cfg = "/apps/" .. id .. "/app.cfg"
-        if orig.fs.exists(cfg) and orig.fs.exists("/apps/" .. id .. "/main.lua") then
-            local f = orig.fs.open(cfg, "r")
-            local app = textutils.unserialize(f.readAll() or "")
-            f.close()
-            if type(app) == "table" and type(app.name) == "string" then
-                app.id = id
-                K.apps[id] = app
-                K.appOrder[#K.appOrder + 1] = app
+    for _, root in ipairs({ "/apps", "/opt" }) do
+        if orig.fs.isDir(root) then
+            for _, id in ipairs(orig.fs.list(root)) do
+                local dir = root .. "/" .. id
+                local cfg = dir .. "/app.cfg"
+                if not K.apps[id] and orig.fs.exists(cfg) and orig.fs.exists(dir .. "/main.lua") then
+                    local f = orig.fs.open(cfg, "r")
+                    local app = textutils.unserialize(f.readAll() or "")
+                    f.close()
+                    if type(app) == "table" and type(app.name) == "string" then
+                        app.id, app.dir = id, dir
+                        if app.group == nil then app.group = "Programs" end
+                        if app.group == false then app.group = nil end
+                        K.apps[id] = app
+                        K.appOrder[#K.appOrder + 1] = app
+                    end
+                end
             end
         end
     end
@@ -530,7 +539,7 @@ function K.launchApp(id, args)
         end
     end
     return K.spawn({
-        path = "/apps/" .. id .. "/main.lua", name = app.name, app = id, args = args,
+        path = app.dir .. "/main.lua", name = app.name, app = id, args = args,
         window = { title = app.name, w = app.w, h = app.h, minW = app.minW, minH = app.minH, maximised = app.maximised },
     })
 end

@@ -78,7 +78,12 @@ tools/           test emulator, icon maker, manifest builder (not installed)
 
 ## Writing an app
 
-Make a folder in `/apps` (built-in) with `app.cfg` and `main.lua`:
+Make a folder with `app.cfg` and `main.lua`: in `/apps` for built-in apps, or in `/opt`
+for installed programs (updates never touch `/opt`). Phoenix finds it at start-up.
+
+In the Start menu, apps go in the **Programs** sub-menu unless `app.cfg` says otherwise:
+`group = "Utilities"` puts it in Utilities (or any new group name), and `group = false`
+puts it at the top level, like Files.
 
 ```lua
 -- app.cfg

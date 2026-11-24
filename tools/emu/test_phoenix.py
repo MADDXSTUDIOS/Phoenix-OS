@@ -56,6 +56,12 @@ def desktop(e):
 def install(root):
     shutil.rmtree(root, ignore_errors=True)
     os.makedirs(root)
+    # a pretend installed program, to check /opt apps land in Programs
+    os.makedirs(os.path.join(root, "opt", "clock"))
+    with open(os.path.join(root, "opt", "clock", "app.cfg"), "w") as f:
+        f.write('{ name = "Clock", w = 20, h = 5 }\n')
+    with open(os.path.join(root, "opt", "clock", "main.lua"), "w") as f:
+        f.write('print(textutils.formatTime(os.time()))\nos.pullEvent("key")\n')
     for item in ("startup.lua", "system", "lib", "apps"):
         src, dst = os.path.join(REPO, item), os.path.join(root, item)
         if os.path.isdir(src):
@@ -64,7 +70,7 @@ def install(root):
             shutil.copy2(src, dst)
 
 
-GROUPED = {"Shell": "Utilities", "Settings": "Utilities", "Tasks": "Utilities"}
+GROUPED = {"Shell": "Utilities", "Settings": "Utilities", "Tasks": "Utilities", "Editor": "Programs", "Clock": "Programs"}
 
 
 def menu(e, item):
@@ -146,9 +152,15 @@ def main():
     rows = e.screen()
     top = e.find("aaron (admin)")[1]  # the menu runs from the name row down to the taskbar
     menu_text = "\n".join(r[:22] for r in rows[top - 1:e.h - 1])
-    check("Files" in menu_text and "Editor" in menu_text and "Utilities" in menu_text, "Files, Editor and Utilities are in the Start menu")
-    check("Shell" not in menu_text and "Settings" not in menu_text and "Tasks" not in menu_text, "Settings, Tasks and Shell aren't loose in it")
+    check("Files" in menu_text and "Programs" in menu_text and "Utilities" in menu_text, "Files, Programs and Utilities are in the Start menu")
+    check(not any(n in menu_text for n in ("Shell", "Settings", "Tasks", "Editor", "Clock")), "the other apps aren't loose in it")
     shot(e, "04_start_menu")
+    pos = e.find("  Programs")
+    e.click(pos[0] + 3, pos[1])
+    fly = "\n".join(r[22:40] for r in e.screen()[top - 1:e.h - 1])
+    check("Editor" in fly and "Clock" in fly, "Programs pops out Editor and the program installed in /opt")
+    shot(e, "04a_programs")
+    e.click(pos[0] + 3, pos[1])
     pos = e.find("  Utilities")
     e.click(pos[0] + 3, pos[1])
     fly = "\n".join(r[22:40] for r in e.screen()[top - 1:e.h - 1])
