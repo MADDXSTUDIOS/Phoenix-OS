@@ -353,6 +353,58 @@ def main():
     e.run(5)
     check("Create the administrator account" in text(e), "and restarts into first-run setup")
 
+    # ---- updating: publish a "newer" build and update from the shell
+    remote = os.path.join(tmp, "remote")
+    shutil.copytree(REPO, remote, ignore=shutil.ignore_patterns(".git", "tools", "shots"))
+    os.makedirs(os.path.join(remote, "apps", "hello"))
+    with open(os.path.join(remote, "apps", "hello", "app.cfg"), "w") as f:
+        f.write('{ name = "Hello", order = 99 }\n')
+    with open(os.path.join(remote, "apps", "hello", "main.lua"), "w") as f:
+        f.write('print("hi")\n')
+    manifest = open(os.path.join(REPO, "manifest.txt")).read()
+    manifest = manifest.replace("# build = ", "# build = new") + "apps/hello/app.cfg\napps/hello/main.lua\n"
+    with open(os.path.join(remote, "manifest.txt"), "w") as f:
+        f.write(manifest)
+    # pretend the installed version had a file that's since been removed
+    os.makedirs(os.path.join(blank, "apps", "old"))
+    with open(os.path.join(blank, "apps", "old", "main.lua"), "w") as f:
+        f.write("-- old\n")
+    with open(os.path.join(blank, "system", "manifest.txt"), "a") as f:
+        f.write("apps/old/main.lua\n")
+
+    e = Emu(LUA, blank, http_dir=remote, http_prefix="https://raw.githubusercontent.com/MADDXSTUDIOS/Phoenix-OS/main/")
+    e.boot()
+    e.run(2)
+    e.type("admin")
+    e.key("enter")
+    e.type("pw")
+    e.key("enter")
+    e.type("pw")
+    e.key("enter", settle=1)
+    menu(e, "Shell")
+    e.type("update")
+    e.key("enter", settle=1)
+    check("Available:" in text(e) and "Install it and restart?" in text(e), "shell update finds the new build")
+    shot(e, "20_update_shell")
+    e.type("y")
+    e.key("enter", settle=1)
+    check("Updated. Restarting" in text(e), "update downloads and installs")
+    boots = e.E.boots or 0
+    e.run(4)
+    check((e.E.boots or 0) == boots + 1 and "Sign in" in text(e), "and restarts")
+    check(os.path.isfile(os.path.join(blank, "apps", "hello", "main.lua")), "new files arrive")
+    check(not os.path.exists(os.path.join(blank, "apps", "old", "main.lua")), "files dropped from the OS are removed")
+    check("# build = new" in open(os.path.join(blank, "system", "manifest.txt")).read(), "installed build is recorded")
+    check(os.path.isfile(os.path.join(blank, "etc", "users.db")), "accounts survive the update")
+    sign_in(e, "admin", "pw")
+    menu(e, "Settings")
+    p = e.find("Updates")
+    e.click(p[0], p[1], settle=0.3)
+    p = e.find(" Check ")
+    e.click(p[0] + 1, p[1], settle=1)
+    check("up to date" in text(e), "Settings says it's up to date after updating")
+    shot(e, "21_update_settings")
+
     log = open(os.path.join(root, "etc", "events.log")).read()
     check("aaron signed in" in log and "Failed sign-in" in log and "Shutting down" in log, "event log records sign-ins and power")
     used = os.path.getsize(os.path.join(REPO, "startup.lua")) + sum(

@@ -1,7 +1,7 @@
 # Phoenix OS
 
 A Windows-style desktop operating system for CC:Tweaked advanced computers
-(Minecraft 1.21.1). This is **Phoenix OS Standard 0.1.0**, the first working core.
+(Minecraft 1.21.1). This is **Phoenix OS Standard 0.1.1**, the first working core.
 
 ## Install
 
@@ -12,7 +12,21 @@ wget run https://raw.githubusercontent.com/MADDXSTUDIOS/Phoenix-OS/main/install.
 ```
 
 It downloads the OS, restarts, and asks you to create the administrator account.
-Running it again updates Phoenix OS without touching accounts or files.
+
+## Updating
+
+Administrators can update from **Settings > Updates** (Check, then Update) or by typing
+`update` in the Shell. It downloads the new version, removes files that are no longer part
+of the OS, and restarts. Accounts, settings and everything in `/usr` are left alone.
+
+Every change pushed to GitHub counts as an update, even without a new version number,
+because each release has a build code made from all of its files. To test work in
+progress, push it to another branch and point a computer at it with
+`update branch dev` in the Shell (or the Branch button in Settings); `update branch main`
+goes back. `update force` reinstalls even when it's already up to date.
+
+**Before committing changes to the OS, run `python3 tools/mkmanifest.py`** so the
+file list and build code are current, otherwise computers won't see the update.
 
 A standard (non-advanced) computer, turtle or pocket computer shows a
 "not compatible" message instead. A command-line edition is planned for those.
@@ -36,13 +50,14 @@ A standard (non-advanced) computer, turtle or pocket computer shows a
   Tasks (running programs, end task).
 - **CraftOS programs** (`ls`, `edit`, `lua`, `wget`, `pastebin`...) run unchanged in the Shell.
 - **Event log** in `/etc/events.log`: sign-ins, failed sign-ins, crashes, power.
+- **Updater:** Settings > Updates or `update` in the Shell, with a branch switch for testing.
 
 ## Layout
 
 ```
 startup.lua      starts /system/boot.lua
 system/          the OS: boot, kernel, window manager, desktop, sign-in, accounts
-lib/             libraries programs can require ("ui", "sha256")
+lib/             libraries programs can require ("ui", "sha256", "update")
 apps/<id>/       built-in apps: app.cfg (name, icon, window size) + main.lua
 etc/  usr/  tmp/ made on the computer: settings and accounts, home folders, temporary files
 tools/           test emulator, icon maker, manifest builder (not installed)

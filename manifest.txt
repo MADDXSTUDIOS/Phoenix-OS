@@ -1,4 +1,6 @@
-# Files the installer downloads. Rebuild with: python3 tools/mkmanifest.py
+# Files the installer and updater download. Rebuild with: python3 tools/mkmanifest.py
+# version = 0.1.1
+# build = 003ac62ef4a4428b
 startup.lua
 system/boot.lua
 system/desktop.lua
@@ -10,6 +12,7 @@ system/users.lua
 system/wm.lua
 lib/sha256.lua
 lib/ui.lua
+lib/update.lua
 apps/editor/app.cfg
 apps/editor/main.lua
 apps/files/app.cfg

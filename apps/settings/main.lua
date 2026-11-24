@@ -3,7 +3,7 @@ local ui = require("ui")
 local t = term.current()
 local user, admin = phoenix.user()
 local form = ui.form(t)
-local pages = { "System", "Personalise", "Users" }
+local pages = { "System", "Personalise", "Users", "Updates" }
 local page = 1
 local NAV = 13
 local rebuild
@@ -130,6 +130,61 @@ build[3] = function(x, w, h)
             end
         end }))
     end
+end
+
+local update = require("update")
+local found, upStatus -- last check result, kept while you flick between pages
+
+build[4] = function(x, w, h)
+    heading(x, "Updates")
+    local mine = update.installed()
+    form:add(ui.label({ x = x, y = 4, text = "Installed", fg = colors.gray }))
+    form:add(ui.label({ x = x + 10, y = 4, w = w - 10, text = update.describe(mine) }))
+    form:add(ui.label({ x = x, y = 5, text = "Branch", fg = colors.gray }))
+    form:add(ui.label({ x = x + 10, y = 5, w = w - 10, text = update.getBranch() }))
+    local status = form:add(ui.label({ x = x, y = 7, w = w, text = upStatus or "", fg = colors.blue }))
+    local detail = form:add(ui.label({ x = x, y = 8, w = w, text = "", fg = colors.gray }))
+    if found and found.available then
+        detail.text = "New: " .. update.describe(found) .. (found.commit and (" [" .. found.commit .. "]") or "")
+    end
+    if not admin then
+        form:add(ui.label({ x = x, y = h - 1, w = w, text = "Ask an administrator to update.", fg = colors.gray }))
+        return
+    end
+    local function say(text)
+        upStatus = text
+        status.text = text
+        form:draw()
+    end
+    form:add(ui.button({ x = x, y = h - 1, text = "Check", onClick = function()
+        say("Checking...")
+        local info, err = update.check()
+        found = info
+        if not info then say(err)
+        elseif info.available then say("An update is available.")
+        else say("Phoenix OS is up to date.") end
+        rebuild()
+    end }))
+    form:add(ui.button({ x = x + 8, y = h - 1, text = "Update", bg = colors.blue, fg = colors.white,
+        disabled = not (found and found.available), onClick = function()
+            if ui.message(t, "Update", "Install " .. update.describe(found) .. "? The computer restarts afterwards; save your work first.", { "Install", "Cancel" }) ~= 1 then return end
+            local ok, err = update.install(found, function(done, total)
+                say(("Downloading %d of %d..."):format(done, total))
+            end)
+            if not ok then say(err) return end
+            say("Updated. Restarting...")
+            sleep(1)
+            phoenix.power.reboot()
+        end }))
+    form:add(ui.button({ x = x + 17, y = h - 1, text = "Branch", onClick = function()
+        local b = ui.prompt(t, "Update branch", "Branch to update from (normally main):", update.getBranch())
+        if b and b:match("%S") then
+            local ok, err = update.setBranch(b:gsub("%s", ""))
+            if not ok then ui.message(t, "Settings", err) end
+            found, upStatus = nil, nil
+            rebuild()
+        end
+    end }))
 end
 
 rebuild = function()

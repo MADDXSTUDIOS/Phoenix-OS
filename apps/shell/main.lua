@@ -23,6 +23,8 @@ function builtins.help()
     print(" ps              list running programs")
     print(" kill <pid>      stop a program")
     print(" whoami, ver     who you are, system version")
+    print(" update          check for and install updates")
+    print(" update branch <name>  update from another branch")
     print(" lock, logoff, reboot, shutdown")
     print(" exit            close this window")
     term.setTextColor(colors.white)
@@ -57,6 +59,41 @@ function builtins.kill(pid)
     if not pid then printError("Usage: kill <pid>") return end
     local ok, err = phoenix.proc.kill(pid)
     if not ok then printError(err) end
+end
+
+function builtins.update(a, b)
+    local update = require("update")
+    if a == "branch" then
+        if not b then print("Updating from: " .. update.getBranch()) return end
+        if not admin then printError("Administrator rights needed") return end
+        local ok, err = update.setBranch(b)
+        if ok then print("Updates will now come from: " .. b) else printError(err) end
+        return
+    end
+    if not admin then printError("Administrator rights needed") return end
+    print("Installed: " .. update.describe(update.installed()))
+    print("Checking " .. update.getBranch() .. "...")
+    local info, err = update.check()
+    if not info then printError(err) return end
+    if not info.available and a ~= "force" then
+        print("Phoenix OS is up to date.")
+        return
+    end
+    print("Available: " .. update.describe(info) .. (info.commit and (" [" .. info.commit .. "]") or ""))
+    write("Install it and restart? (y/n) ")
+    if (read() or ""):lower():sub(1, 1) ~= "y" then return end
+    local _, y = term.getCursorPos()
+    local ok, e = update.install(info, function(done, total, path)
+        term.setCursorPos(1, y)
+        term.clearLine()
+        write(("[%d/%d] %s"):format(done, total, path or "writing files"))
+    end)
+    print()
+    if not ok then printError(e) return end
+    term.setTextColor(colors.lime)
+    print("Updated. Restarting...")
+    sleep(1.5)
+    phoenix.power.reboot()
 end
 
 function builtins.lock() phoenix.power.lock() end

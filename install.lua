@@ -63,6 +63,10 @@ for path, body in pairs(got) do
     f.write(body)
     f.close()
 end
+-- The updater compares against this copy to know what's installed.
+local f = fs.open("system/manifest.txt", "w")
+f.write(manifest)
+f.close()
 print()
 if term.isColour() then term.setTextColour(colours.lime) end
 print("Phoenix OS installed.")
